@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v19 - Fixes infinite AppBar pushdown loop & text centering.
+    v24 - Full-width borders/banners & 15px default margins.
 #>
 
 [CmdletBinding()]
@@ -174,6 +174,7 @@ namespace NetMark
         public const int WM_SYSCOMMAND      = 0x0112;
         public const int WM_DPICHANGED      = 0x02E0;
         public const int WM_CLOSE           = 0x0010;
+        public const int WM_DISPLAYCHANGE   = 0x007E;
     }
 }
 '@
@@ -207,15 +208,15 @@ namespace NetMark
         public int     HeightPx   = 24;
 
         public bool    TextShadow       = false;
-        public Color   TextShadowColor  = Color.Black;
+        public Color   TextShadowColor  = Color.FromArgb(64, 64, 64); // Dark Grey
         public int     TextShadowOffset = 2;
 
         public bool    BannerShadow     = true;
         public bool    BorderEnabled    = false;
         public int     BorderSize       = 4;
 
-        public int     MarginLeft       = 10;
-        public int     MarginRight      = 10;
+        public int     MarginLeft       = 15;
+        public int     MarginRight      = 15;
 
         public bool    RainbowMode      = false; 
 
@@ -420,7 +421,7 @@ namespace NetMark
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs (FIXED: Infinite Loop & Centering) ---------
+# ---- Shared\BannerWindow.cs (UPDATED: Full Width AppBar) ---------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -433,10 +434,10 @@ namespace NetMark
     internal sealed class BannerWindow : Form
     {
         private readonly IntPtr _hMonitor;
+        private NativeMethods.MONITORINFOEX _currentMonitorInfo;
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
-        private bool _isUpdating; // Re-entrancy guard
         private int _hue = 0;
         private System.Windows.Forms.Timer _rainbowTimer;
 
@@ -457,10 +458,17 @@ namespace NetMark
             this.DoubleBuffered = true;
             this.AutoScaleMode = AutoScaleMode.None;
             
+            UpdateMonitorInfo();
             this.Bounds = ComputeVisibleWindowRect();
             Log("BannerWindow created for monitor: " + _hMonitor);
             
             if (_settings.RainbowMode) StartRainbowTimer();
+        }
+
+        private void UpdateMonitorInfo()
+        {
+            _currentMonitorInfo = new NativeMethods.MONITORINFOEX { cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
+            NativeMethods.GetMonitorInfo(_hMonitor, ref _currentMonitorInfo);
         }
 
         public BannerSettings CurrentSettings => _settings;
@@ -494,10 +502,10 @@ namespace NetMark
             if (_rainbowTimer == null)
             {
                 _rainbowTimer = new System.Windows.Forms.Timer();
-                _rainbowTimer.Interval = 50; 
+                _rainbowTimer.Interval = 150; 
                 _rainbowTimer.Tick += (s, e) => 
                 {
-                    _hue = (_hue + 5) % 360;
+                    _hue = (_hue + 2) % 360;
                     this.Invalidate();
                     this.Update(); 
                 };
@@ -558,7 +566,11 @@ namespace NetMark
                             return;
                         break;
                     case NativeMethods.WM_DPICHANGED:
-                        ReassertAppBar();
+                    case NativeMethods.WM_DISPLAYCHANGE:
+                        Log("Display change detected. Re-registering AppBar.");
+                        UnregisterAppBar();
+                        UpdateMonitorInfo();
+                        if (this.IsHandleCreated) RegisterAppBar();
                         break;
                 }
                 base.WndProc(ref m);
@@ -569,18 +581,9 @@ namespace NetMark
             }
         }
 
-        private NativeMethods.MONITORINFOEX GetCurrentMonitorInfo()
-        {
-            NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX { cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
-            NativeMethods.GetMonitorInfo(_hMonitor, ref mi);
-            return mi;
-        }
-
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            // CRITICAL FIX: Must use rcMonitor (absolute screen coords), NOT rcWork.
-            // If we use rcWork, it already excludes the AppBar, causing an infinite push-down loop!
-            var rc = GetCurrentMonitorInfo().rcMonitor;
+            var rc = _currentMonitorInfo.rcWork;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
             return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Right, Bottom = rc.Top + h };
         }
@@ -623,8 +626,7 @@ namespace NetMark
 
         private void ReassertAppBar()
         {
-            if (!_registered || _isUpdating) return;
-            _isUpdating = true;
+            if (!_registered) return;
             try
             {
                 NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
@@ -636,14 +638,16 @@ namespace NetMark
                     rc = ComputeAppBarRect()
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
+                
+                // CRITICAL FIX: Force the top banner to span the entire monitor width.
+                // This covers the top-left and top-right corners seamlessly.
+                abd.rc.Left = _currentMonitorInfo.rcMonitor.Left;
+                abd.rc.Right = _currentMonitorInfo.rcMonitor.Right;
+
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
                 this.Bounds = abd.rc.ToRectangle();
             }
             catch { }
-            finally
-            {
-                _isUpdating = false;
-            }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -761,7 +765,7 @@ namespace NetMark
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs (FIXED: Infinite Loop) --------------------
+# ---- Shared\BorderWindow.cs (UPDATED: Full Width Bottom Border) --------------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -774,11 +778,11 @@ namespace NetMark
     internal sealed class BorderWindow : Form
     {
         private readonly IntPtr _hMonitor;
+        private NativeMethods.MONITORINFOEX _currentMonitorInfo;
         private readonly uint _edge;
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
-        private bool _isUpdating; // Re-entrancy guard
         private int _hue = 0;
         private System.Windows.Forms.Timer _rainbowTimer;
 
@@ -802,10 +806,17 @@ namespace NetMark
             this.DoubleBuffered = true;
             this.AutoScaleMode = AutoScaleMode.None;
             
+            UpdateMonitorInfo();
             this.Bounds = ComputeVisibleWindowRect();
             Log($"BorderWindow created edge={edge} monitor={hMonitor}");
 
             if (_settings.RainbowMode) StartRainbowTimer();
+        }
+
+        private void UpdateMonitorInfo()
+        {
+            _currentMonitorInfo = new NativeMethods.MONITORINFOEX { cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
+            NativeMethods.GetMonitorInfo(_hMonitor, ref _currentMonitorInfo);
         }
 
         public void UpdateSettings(BannerSettings newSettings)
@@ -825,10 +836,10 @@ namespace NetMark
             if (_rainbowTimer == null)
             {
                 _rainbowTimer = new System.Windows.Forms.Timer();
-                _rainbowTimer.Interval = 50; 
+                _rainbowTimer.Interval = 150; 
                 _rainbowTimer.Tick += (s, e) => 
                 {
-                    _hue = (_hue + 5) % 360;
+                    _hue = (_hue + 2) % 360;
                     this.Invalidate();
                     this.Update(); 
                 };
@@ -888,7 +899,11 @@ namespace NetMark
                             return;
                         break;
                     case NativeMethods.WM_DPICHANGED:
-                        ReassertAppBar();
+                    case NativeMethods.WM_DISPLAYCHANGE:
+                        Log("Display change detected. Re-registering AppBar.");
+                        UnregisterAppBar();
+                        UpdateMonitorInfo();
+                        if (this.IsHandleCreated) RegisterAppBar();
                         break;
                 }
                 base.WndProc(ref m);
@@ -899,18 +914,10 @@ namespace NetMark
             }
         }
 
-        private NativeMethods.MONITORINFOEX GetCurrentMonitorInfo()
-        {
-            NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX { cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
-            NativeMethods.GetMonitorInfo(_hMonitor, ref mi);
-            return mi;
-        }
-
         private NativeMethods.RECT ComputeAppBarRect()
         {
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
-            // CRITICAL FIX: Must use rcMonitor (absolute screen coords), NOT rcWork.
-            var rc = GetCurrentMonitorInfo().rcMonitor;
+            var rc = _currentMonitorInfo.rcWork;
 
             switch (_edge)
             {
@@ -919,7 +926,9 @@ namespace NetMark
                 case NativeMethods.ABE_RIGHT:
                     return new NativeMethods.RECT { Left = rc.Right - size, Top = rc.Top, Right = rc.Right, Bottom = rc.Bottom };
                 case NativeMethods.ABE_BOTTOM:
-                    return new NativeMethods.RECT { Left = rc.Left, Top = rc.Bottom - size, Right = rc.Right, Bottom = rc.Bottom };
+                    // CRITICAL FIX: Extend the bottom border to the absolute monitor bounds 
+                    // to cover the transparent corners left by the left/right borders.
+                    return new NativeMethods.RECT { Left = _currentMonitorInfo.rcMonitor.Left, Top = rc.Bottom - size, Right = _currentMonitorInfo.rcMonitor.Right, Bottom = rc.Bottom };
                 default:
                     return new NativeMethods.RECT();
             }
@@ -962,8 +971,7 @@ namespace NetMark
 
         private void ReassertAppBar()
         {
-            if (!_registered || _isUpdating) return;
-            _isUpdating = true;
+            if (!_registered) return;
             try
             {
                 NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
@@ -975,14 +983,24 @@ namespace NetMark
                     rc = ComputeAppBarRect()
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
+                
+                // CRITICAL FIX: ABM_QUERYPOS might shrink the bottom border back to rcWork bounds.
+                // We must force it back to full monitor width to cover the corners.
+                if (_edge == NativeMethods.ABE_BOTTOM)
+                {
+                    abd.rc.Left = _currentMonitorInfo.rcMonitor.Left;
+                    abd.rc.Right = _currentMonitorInfo.rcMonitor.Right;
+                }
+                else if (_edge == NativeMethods.ABE_LEFT || _edge == NativeMethods.ABE_RIGHT)
+                {
+                    abd.rc.Top = _currentMonitorInfo.rcWork.Top;
+                    abd.rc.Bottom = _currentMonitorInfo.rcWork.Bottom;
+                }
+
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
                 this.Bounds = abd.rc.ToRectangle();
             }
             catch { }
-            finally
-            {
-                _isUpdating = false;
-            }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -1140,7 +1158,7 @@ namespace NetMark
         private static int Main(string[] args)
         {
             Log("=========================================================");
-            Log("NetMark starting (v19 - Infinite Loop Fix)...");
+            Log("NetMark starting (v24 - Full-width borders & margins fix)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
@@ -1761,15 +1779,15 @@ Dbg-File $bannerProgramPath
         <div class="form-group">
           <div class="field-label"><span>Left margin</span><span class="field-hint">Padding from left edge</span></div>
           <div class="slider-container">
-            <input type="range" id="sliderMarginLeft" class="slider-input" min="0" max="100" value="10" oninput="syncMarginLeft(this.value)">
-            <div class="slider-val-badge" id="marginLeftBadge">10 px</div>
+            <input type="range" id="sliderMarginLeft" class="slider-input" min="0" max="100" value="15" oninput="syncMarginLeft(this.value)">
+            <div class="slider-val-badge" id="marginLeftBadge">15 px</div>
           </div>
         </div>
         <div class="form-group">
           <div class="field-label"><span>Right margin</span><span class="field-hint">Padding from right edge</span></div>
           <div class="slider-container">
-            <input type="range" id="sliderMarginRight" class="slider-input" min="0" max="100" value="10" oninput="syncMarginRight(this.value)">
-            <div class="slider-val-badge" id="marginRightBadge">10 px</div>
+            <input type="range" id="sliderMarginRight" class="slider-input" min="0" max="100" value="15" oninput="syncMarginRight(this.value)">
+            <div class="slider-val-badge" id="marginRightBadge">15 px</div>
           </div>
         </div>
       </div>
@@ -1867,9 +1885,9 @@ Dbg-File $bannerProgramPath
         <div class="form-group">
           <div class="field-label"><span>Shadow color</span></div>
           <label class="color-picker-btn">
-            <span class="color-circle" id="tscCircle" style="background-color: #000000;"></span>
-            <span class="color-label-val" id="tscHexLabel">#000000</span>
-            <input type="color" id="pickerTextShadow" style="opacity: 0; width: 0; height: 0; position: absolute;" value="#000000" oninput="syncColor('tsc', this.value)">
+            <span class="color-circle" id="tscCircle" style="background-color: #404040;"></span>
+            <span class="color-label-val" id="tscHexLabel">#404040</span>
+            <input type="color" id="pickerTextShadow" style="opacity: 0; width: 0; height: 0; position: absolute;" value="#404040" oninput="syncColor('tsc', this.value)">
           </label>
         </div>
         <div class="form-group">
@@ -1925,42 +1943,42 @@ Dbg-File $bannerProgramPath
   <script>
     const PRESETS = [
       { name: "UNCLASSIFIED",            text: "UNCLASSIFIED",                       bg: "#007a33", fg: "#ffffff", desc: "Standard" },
-      { name: "UNCLASSIFIED // FOUO",    text: "UNCLASSIFIED // FOUO - %COMPUTERNAME%", bg: "#007a33", fg: "#ffffff", desc: "For Official Use Only" },
-      { name: "UNCLASSIFIED // CUI",     text: "UNCLASSIFIED // CUI - %COMPUTERNAME%", bg: "#007a33", fg: "#ffffff", desc: "CUI Designation" },
-      { name: "CUI",                     text: "CUI - %COMPUTERNAME%",               bg: "#512888", fg: "#ffffff", desc: "Controlled Unclassified" },
-      { name: "CUI // SP-SHI",           text: "CUI // SP-SHI - %COMPUTERNAME%",     bg: "#512888", fg: "#ffffff", desc: "Sensitive Homeland Info" },
-      { name: "CUI // SP-HC",            text: "CUI // SP-HC - %COMPUTERNAME%",      bg: "#512888", fg: "#ffffff", desc: "Sensitive Health Care" },
-      { name: "CUI // SP-PR",            text: "CUI // SP-PR - %COMPUTERNAME%",      bg: "#512888", fg: "#ffffff", desc: "Sensitive Privacy" },
-      { name: "CUI // FEDCON",           text: "CUI // FEDCON - %COMPUTERNAME%",     bg: "#512888", fg: "#ffffff", desc: "Federal Contract" },
-      { name: "CUI // NOFORN",           text: "CUI // NOFORN - %COMPUTERNAME%",     bg: "#512888", fg: "#ffffff", desc: "No Foreign" },
-      { name: "CONFIDENTIAL",            text: "CONFIDENTIAL - %COMPUTERNAME%",      bg: "#003e7e", fg: "#ffffff", desc: "Confidential level" },
-      { name: "CONFIDENTIAL // NOFORN",  text: "CONFIDENTIAL // NOFORN - %COMPUTERNAME%", bg: "#003e7e", fg: "#ffffff", desc: "Conf No Foreign" },
-      { name: "SECRET",                  text: "SECRET - %COMPUTERNAME%",            bg: "#c00000", fg: "#ffffff", desc: "Secret level" },
-      { name: "SECRET // NOFORN",        text: "SECRET // NOFORN - %COMPUTERNAME%",  bg: "#c00000", fg: "#ffffff", desc: "Secret No Foreign" },
-      { name: "SECRET // REL TO USA, FVEY", text: "SECRET // REL TO USA, FVEY - %COMPUTERNAME%", bg: "#c00000", fg: "#ffffff", desc: "Rel FVEY" },
-      { name: "TOP SECRET",              text: "TOP SECRET - %COMPUTERNAME%",        bg: "#ff8c00", fg: "#000000", desc: "Top Secret level" },
-      { name: "TOP SECRET // NOFORN",    text: "TOP SECRET // NOFORN - %COMPUTERNAME%", bg: "#ff8c00", fg: "#000000", desc: "TS No Foreign" },
-      { name: "TOP SECRET // SCI",       text: "TOP SECRET // SCI - %COMPUTERNAME%", bg: "#ff8c00", fg: "#000000", desc: "TS SCI" },
-      { name: "TS // SCI // NOFORN",     text: "TS // SCI // NOFORN - %COMPUTERNAME%", bg: "#ff8c00", fg: "#000000", desc: "TS SCI NF" },
-      { name: "TS // SCI // REL TO USA, FVEY", text: "TS // SCI // REL TO USA, FVEY - %COMPUTERNAME%", bg: "#ff8c00", fg: "#000000", desc: "TS SCI FVEY" },
-      { name: "SBU",                     text: "SENSITIVE BUT UNCLASSIFIED - %COMPUTERNAME%", bg: "#003e7e", fg: "#ffffff", desc: "Sensitive but Unclass." },
-      { name: "LES",                     text: "LAW ENFORCEMENT SENSITIVE - %COMPUTERNAME%", bg: "#5c0a20", fg: "#ffffff", desc: "Law Enforcement" },
-      { name: "LES // NOFORN",           text: "LES // NOFORN - %COMPUTERNAME%",     bg: "#5c0a20", fg: "#ffffff", desc: "LES No Foreign" },
-      { name: "DoD CPI",                 text: "DoD CRITICAL PROGRAM INFO - %COMPUTERNAME%", bg: "#404040", fg: "#ffffff", desc: "Critical Prog Info" },
-      { name: "ITAR",                    text: "ITAR CONTROLLED - %COMPUTERNAME%",   bg: "#8b0000", fg: "#ffffff", desc: "Export controlled" },
-      { name: "HIPAA",                   text: "HIPAA PROTECTED - %COMPUTERNAME%",   bg: "#008080", fg: "#ffffff", desc: "Healthcare data" },
-      { name: "A-C PRIV",                text: "ATTORNEY-CLIENT PRIVILEGED - %COMPUTERNAME%", bg: "#5c4033", fg: "#ffffff", desc: "Legal privilege" },
-      { name: "PA",                      text: "PUBLIC AFFAIRS USE ONLY - %COMPUTERNAME%", bg: "#3b6db5", fg: "#ffffff", desc: "Public Affairs" },
-      { name: "PROPRIETARY",             text: "CONTRACTOR PROPRIETARY - %COMPUTERNAME%", bg: "#505050", fg: "#ffffff", desc: "Proprietary" }
+      { name: "UNCLASSIFIED // FOUO",    text: "UNCLASSIFIED // FOUO",                bg: "#007a33", fg: "#ffffff", desc: "For Official Use Only" },
+      { name: "UNCLASSIFIED // CUI",     text: "UNCLASSIFIED // CUI",                bg: "#007a33", fg: "#ffffff", desc: "CUI Designation" },
+      { name: "CUI",                     text: "CUI",                                bg: "#512888", fg: "#ffffff", desc: "Controlled Unclassified" },
+      { name: "CUI // SP-SHI",           text: "CUI // SP-SHI",                      bg: "#512888", fg: "#ffffff", desc: "Sensitive Homeland Info" },
+      { name: "CUI // SP-HC",            text: "CUI // SP-HC",                       bg: "#512888", fg: "#ffffff", desc: "Sensitive Health Care" },
+      { name: "CUI // SP-PR",            text: "CUI // SP-PR",                       bg: "#512888", fg: "#ffffff", desc: "Sensitive Privacy" },
+      { name: "CUI // FEDCON",           text: "CUI // FEDCON",                      bg: "#512888", fg: "#ffffff", desc: "Federal Contract" },
+      { name: "CUI // NOFORN",           text: "CUI // NOFORN",                      bg: "#512888", fg: "#ffffff", desc: "No Foreign" },
+      { name: "CONFIDENTIAL",            text: "CONFIDENTIAL",                       bg: "#003e7e", fg: "#ffffff", desc: "Confidential level" },
+      { name: "CONFIDENTIAL // NOFORN",  text: "CONFIDENTIAL // NOFORN",             bg: "#003e7e", fg: "#ffffff", desc: "Conf No Foreign" },
+      { name: "SECRET",                  text: "SECRET",                             bg: "#c00000", fg: "#ffffff", desc: "Secret level" },
+      { name: "SECRET // NOFORN",        text: "SECRET // NOFORN",                   bg: "#c00000", fg: "#ffffff", desc: "Secret No Foreign" },
+      { name: "SECRET // REL TO USA, FVEY", text: "SECRET // REL TO USA, FVEY",      bg: "#c00000", fg: "#ffffff", desc: "Rel FVEY" },
+      { name: "TOP SECRET",              text: "TOP SECRET",                        bg: "#ff8c00", fg: "#000000", desc: "Top Secret level" },
+      { name: "TOP SECRET // NOFORN",    text: "TOP SECRET // NOFORN",              bg: "#ff8c00", fg: "#000000", desc: "TS No Foreign" },
+      { name: "TOP SECRET // SCI",       text: "TOP SECRET // SCI",                  bg: "#ff8c00", fg: "#000000", desc: "TS SCI" },
+      { name: "TS // SCI // NOFORN",     text: "TS // SCI // NOFORN",                bg: "#ff8c00", fg: "#000000", desc: "TS SCI NF" },
+      { name: "TS // SCI // REL TO USA, FVEY", text: "TS // SCI // REL TO USA, FVEY", bg: "#ff8c00", fg: "#000000", desc: "TS SCI FVEY" },
+      { name: "SBU",                     text: "SENSITIVE BUT UNCLASSIFIED",         bg: "#003e7e", fg: "#ffffff", desc: "Sensitive but Unclass." },
+      { name: "LES",                     text: "LAW ENFORCEMENT SENSITIVE",         bg: "#5c0a20", fg: "#ffffff", desc: "Law Enforcement" },
+      { name: "LES // NOFORN",           text: "LES // NOFORN",                      bg: "#5c0a20", fg: "#ffffff", desc: "LES No Foreign" },
+      { name: "DoD CPI",                 text: "DoD CRITICAL PROGRAM INFO",         bg: "#404040", fg: "#ffffff", desc: "Critical Prog Info" },
+      { name: "ITAR",                    text: "ITAR CONTROLLED",                    bg: "#8b0000", fg: "#ffffff", desc: "Export controlled" },
+      { name: "HIPAA",                   text: "HIPAA PROTECTED",                    bg: "#008080", fg: "#ffffff", desc: "Healthcare data" },
+      { name: "A-C PRIV",                text: "ATTORNEY-CLIENT PRIVILEGED",         bg: "#5c4033", fg: "#ffffff", desc: "Legal privilege" },
+      { name: "PA",                      text: "PUBLIC AFFAIRS USE ONLY",            bg: "#3b6db5", fg: "#ffffff", desc: "Public Affairs" },
+      { name: "PROPRIETARY",             text: "CONTRACTOR PROPRIETARY",             bg: "#505050", fg: "#ffffff", desc: "Proprietary" }
     ];
     const appState = {
       textLeft: "%IP_ADDRESS%", textCenter: "%COMPUTERNAME%", textRight: "%USERNAME%",
       bgColor: "#007a33", fgColor: "#ffffff", fontName: "Segoe UI", fontSize: 10,
       fontBold: true, fontItalic: false, fontUnderline: false, heightPx: 24,
-      textShadow: false, textShadowColor: "#000000", textShadowOffset: 2, 
+      textShadow: false, textShadowColor: "#404040", textShadowOffset: 2, 
       bannerShadow: true,
       borderEnabled: false, borderSize: 4,
-      marginLeft: 10, marginRight: 10,
+      marginLeft: 15, marginRight: 15,
       rainbowMode: false,
       customEnvVars: [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }]
     };
@@ -2002,8 +2020,11 @@ Dbg-File $bannerProgramPath
       appState.customEnvVars.forEach(item => {
         if (item.key.trim()) {
           const val = item.val.trim();
-          const replacement = val.startsWith("$") ? "192.168.1.28" : item.val;
           const re = new RegExp(`%${item.key}%`, 'gi');
+          let replacement = item.val;
+          if (val.startsWith("$")) {
+            replacement = val.includes("NetIPAddress") ? "192.168.1.28" : "<Dynamic Value>";
+          }
           result = result.replace(re, replacement);
         }
       });
@@ -2063,7 +2084,7 @@ Dbg-File $bannerProgramPath
       if (appState.rainbowMode) {
           if (!rainbowInterval) {
               rainbowInterval = setInterval(() => {
-                  const hue = (Date.now() / 20) % 360;
+                  const hue = (Date.now() / 60) % 360; 
                   const color = `hsl(${hue}, 100%, 50%)`;
                   banner.style.backgroundColor = color;
                   if (appState.borderEnabled) {
@@ -2118,6 +2139,10 @@ Dbg-File $bannerProgramPath
     }
     function applyPreset(p) {
       document.getElementById('txtCenter').value = p.text;
+      // Clear Left and Right text to strictly show only the classification
+      document.getElementById('txtLeft').value = '';
+      document.getElementById('txtRight').value = '';
+      
       document.getElementById('pickerBg').value = p.bg;
       document.getElementById('pickerFg').value = p.fg;
       syncColor('bg', p.bg);
@@ -2240,8 +2265,8 @@ Dbg-File $bannerProgramPath
       document.getElementById('txtCenter').value = '%COMPUTERNAME%';
       document.getElementById('txtRight').value = '%USERNAME%';
       document.getElementById('sliderHeight').value = 24;
-      document.getElementById('sliderMarginLeft').value = 10;
-      document.getElementById('sliderMarginRight').value = 10;
+      document.getElementById('sliderMarginLeft').value = 15;
+      document.getElementById('sliderMarginRight').value = 15;
       document.getElementById('selFontFamily').value = 'Segoe UI';
       document.getElementById('numFontSize').value = 10;
       document.getElementById('chkFontBold').checked = true;
@@ -2252,17 +2277,17 @@ Dbg-File $bannerProgramPath
       document.getElementById('chkBorderEnabled').checked = false;
       document.getElementById('sliderBorderSize').value = 4;
       document.getElementById('sliderTextShadowOffset').value = 2;
-      document.getElementById('pickerTextShadow').value = '#000000';
+      document.getElementById('pickerTextShadow').value = '#404040';
       
       const chkRainbow = document.getElementById('chkRainbowMode');
       if (chkRainbow) chkRainbow.checked = false;
 
       syncColor('bg', '#007a33');
       syncColor('fg', '#ffffff');
-      syncColor('tsc', '#000000');
+      syncColor('tsc', '#404040');
       syncHeight(24);
-      syncMarginLeft(10);
-      syncMarginRight(10);
+      syncMarginLeft(15);
+      syncMarginRight(15);
       syncBorderSize(4);
       syncTextShadowOffset(2);
       appState.customEnvVars = [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }];
@@ -2307,13 +2332,13 @@ FontItalic=False
 FontUnderline=False
 Height=24
 TextShadow=False
-TextShadowColor=-16777216
+TextShadowColor=-12566464
 TextShadowOffset=2
 BannerShadow=True
 BorderEnabled=False
 BorderSize=4
-MarginLeft=10
-MarginRight=10
+MarginLeft=15
+MarginRight=15
 
 [EnvVars]
 IP_ADDRESS=$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress
@@ -2392,7 +2417,7 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetMark (v19) is running in background."                             -ForegroundColor White
+Write-Host " NetMark (v24) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
