@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetBanner C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v6 - Single-file portable build with embedded resources.
+    v9 - Uses rcWork to fix taskbar overlap and corner gaps.
 #>
 
 [CmdletBinding()]
@@ -82,7 +82,10 @@ namespace NetBanner
         public const uint ABN_POSCHANGED      = 0x00000001;
         public const uint ABN_FULLSCREENAPP   = 0x00000002;
 
+        public const uint ABE_LEFT   = 0;
         public const uint ABE_TOP    = 1;
+        public const uint ABE_RIGHT  = 2;
+        public const uint ABE_BOTTOM = 3;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct APPBARDATA
@@ -208,7 +211,9 @@ namespace NetBanner
         public int     TextShadowOffset = 2;
 
         public bool    BannerShadow     = true;
-        
+        public bool    BorderEnabled    = false;
+        public int     BorderSize       = 4;
+
         public Dictionary<string, string> CustomEnvVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         
         private Dictionary<string, string> _expandedVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -221,11 +226,7 @@ namespace NetBanner
             string path = GetIniPath();
             if (File.Exists(path))
             {
-                try
-                {
-                    return LoadFromString(File.ReadAllText(path));
-                }
-                catch { }
+                try { return LoadFromString(File.ReadAllText(path)); } catch { }
             }
             return new BannerSettings();
         }
@@ -276,6 +277,8 @@ namespace NetBanner
                         case "TextShadowColor":   try { s.TextShadowColor = Color.FromArgb(int.Parse(val)); } catch { } break;
                         case "TextShadowOffset":  try { s.TextShadowOffset = int.Parse(val); } catch { } break;
                         case "BannerShadow":      try { s.BannerShadow = bool.Parse(val); } catch { } break;
+                        case "BorderEnabled":     try { s.BorderEnabled = bool.Parse(val); } catch { } break;
+                        case "BorderSize":        try { s.BorderSize = int.Parse(val); } catch { } break;
                     }
                 }
             }
@@ -284,11 +287,7 @@ namespace NetBanner
 
         public void Save()
         {
-            try
-            {
-                File.WriteAllText(GetIniPath(), ToIniString());
-            }
-            catch { }
+            try { File.WriteAllText(GetIniPath(), ToIniString()); } catch { }
         }
 
         public string ToIniString()
@@ -310,6 +309,8 @@ namespace NetBanner
             sb.AppendLine($"TextShadowColor={TextShadowColor.ToArgb()}");
             sb.AppendLine($"TextShadowOffset={TextShadowOffset}");
             sb.AppendLine($"BannerShadow={BannerShadow}");
+            sb.AppendLine($"BorderEnabled={BorderEnabled}");
+            sb.AppendLine($"BorderSize={BorderSize}");
             
             if (CustomEnvVars != null && CustomEnvVars.Count > 0)
             {
@@ -333,7 +334,6 @@ namespace NetBanner
                 foreach (var kvp in CustomEnvVars)
                 {
                     if (string.IsNullOrEmpty(kvp.Key)) continue;
-                    
                     if (IsPowerShellExpression(kvp.Value))
                     {
                         string result = EvaluatePowerShell(kvp.Value);
@@ -345,18 +345,13 @@ namespace NetBanner
                     }
                 }
             }
-            lock (_varLock)
-            {
-                _expandedVars = expanded;
-            }
+            lock (_varLock) { _expandedVars = expanded; }
         }
 
         public string ExpandText(string text)
         {
             if (string.IsNullOrEmpty(text)) return text ?? "";
-            
             string result = text;
-            
             lock (_varLock)
             {
                 if (_expandedVars != null)
@@ -364,27 +359,18 @@ namespace NetBanner
                     foreach (var kvp in _expandedVars)
                     {
                         if (kvp.Value != null)
-                        {
                             result = result.Replace($"%{kvp.Key}%", kvp.Value, StringComparison.OrdinalIgnoreCase);
-                        }
                     }
                 }
             }
-            
-            try
-            {
-                result = Environment.ExpandEnvironmentVariables(result);
-            }
-            catch { }
-            
+            try { result = Environment.ExpandEnvironmentVariables(result); } catch { }
             return result ?? "";
         }
 
         private static bool IsPowerShellExpression(string value)
         {
             if (string.IsNullOrEmpty(value)) return false;
-            string trimmed = value.TrimStart();
-            return trimmed.StartsWith("$");
+            return value.TrimStart().StartsWith("$");
         }
 
         private static string EvaluatePowerShell(string script)
@@ -406,10 +392,7 @@ namespace NetBanner
                     if (p == null) return "";
                     string output = p.StandardOutput.ReadToEnd().Trim();
                     p.WaitForExit(15000);
-                    if (!p.HasExited)
-                    {
-                        try { p.Kill(); } catch { }
-                    }
+                    if (!p.HasExited) try { p.Kill(); } catch { }
                     var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                     return lines.Length > 0 ? lines[0].Trim() : output;
                 }
@@ -422,7 +405,7 @@ namespace NetBanner
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs -----------------------------------------------
+# ---- Shared\BannerWindow.cs (UPDATED: Full width, uses rcWork) -----------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -439,9 +422,9 @@ namespace NetBanner
         private readonly int _callbackMsg;
         private bool _registered;
 
-        private static void Log(string msg)
+        private void Log(string msg)
         {
-            try { System.IO.File.AppendAllText("C:\\NetBanner-startup.log", $"{DateTime.Now}: [Window] {msg}\n"); } catch { }
+            try { System.IO.File.AppendAllText("C:\\NetBanner-startup.log", $"{DateTime.Now}: [Banner] {msg}\n"); } catch { }
         }
 
         public BannerWindow(NativeMethods.MONITORINFOEX monitor, BannerSettings settings)
@@ -489,9 +472,7 @@ namespace NetBanner
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= 0x00000080 | 0x00000008 | 0x08000000;
                 if (_settings != null && _settings.BannerShadow)
-                {
                     cp.ClassStyle |= 0x00020000;
-                }
                 return cp;
             }
         }
@@ -499,68 +480,65 @@ namespace NetBanner
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            try
-            {
-                RegisterAppBar();
-            }
-            catch (Exception ex)
-            {
-                Log("RegisterAppBar failed: " + ex.Message);
-            }
+            try { RegisterAppBar(); }
+            catch (Exception ex) { Log("RegisterAppBar failed: " + ex.Message); }
         }
 
         protected override void WndProc(ref Message m)
         {
-            long wParam = m.WParam.ToInt64();
-            
-            if (m.Msg == _callbackMsg)
+            try
             {
-                int notify = (int)(wParam & 0xFFFFFFFF);
-                switch (notify)
+                long wParam = m.WParam.ToInt64();
+                if (m.Msg == _callbackMsg)
                 {
-                    case (int)NativeMethods.ABN_POSCHANGED:
+                    int notify = (int)(wParam & 0xFFFFFFFF);
+                    switch (notify)
+                    {
+                        case (int)NativeMethods.ABN_POSCHANGED: ReassertAppBar(); break;
+                        case (int)NativeMethods.ABN_FULLSCREENAPP:
+                            if (m.LParam.ToInt64() == 0) ReassertTopmost();
+                            break;
+                    }
+                    return;
+                }
+
+                switch (m.Msg)
+                {
+                    case NativeMethods.WM_NCHITTEST:
+                        m.Result = new IntPtr(NativeMethods.HTTRANSPARENT);
+                        return;
+                    case NativeMethods.WM_SYSCOMMAND:
+                        int cmd = (int)(wParam & 0xFFF0);
+                        if (cmd == NativeMethods.SC_CLOSE || cmd == NativeMethods.SC_MOVE || cmd == NativeMethods.SC_SIZE)
+                            return;
+                        break;
+                    case NativeMethods.WM_DPICHANGED:
                         ReassertAppBar();
                         break;
-                    case (int)NativeMethods.ABN_FULLSCREENAPP:
-                        if (m.LParam.ToInt64() == 0) ReassertTopmost();
-                        break;
                 }
-                return;
+                base.WndProc(ref m);
             }
-
-            switch (m.Msg)
+            catch (Exception ex)
             {
-                case NativeMethods.WM_NCHITTEST:
-                    m.Result = new IntPtr(NativeMethods.HTTRANSPARENT);
-                    return;
-
-                case NativeMethods.WM_SYSCOMMAND:
-                    int cmd = (int)(wParam & 0xFFF0);
-                    if (cmd == NativeMethods.SC_CLOSE || cmd == NativeMethods.SC_MOVE || cmd == NativeMethods.SC_SIZE)
-                        return;
-                    break;
-
-                case NativeMethods.WM_DPICHANGED:
-                    ReassertAppBar();
-                    break;
+                Log("WndProc exception: " + ex.Message);
             }
-
-            base.WndProc(ref m);
         }
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            int x = _monitor.rcMonitor.Left;
-            int width = _monitor.rcMonitor.Width;
-            int y = _monitor.rcMonitor.Top;
+            // Use rcWork so we respect the Taskbar area automatically
+            var rc = _monitor.rcWork;
+            int y = rc.Top;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
-            return new NativeMethods.RECT { Left = x, Top = y, Right = x + width, Bottom = y + h };
+
+            // Top banner spans the entire width of the Work Area to prevent corner gaps
+            return new NativeMethods.RECT { Left = rc.Left, Top = y, Right = rc.Right, Bottom = y + h };
         }
 
         private Rectangle ComputeVisibleWindowRect()
         {
-            int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
-            return new Rectangle(_monitor.rcMonitor.Left, _monitor.rcMonitor.Top, _monitor.rcMonitor.Width, h);
+            var r = ComputeAppBarRect();
+            return new Rectangle(r.Left, r.Top, r.Width, r.Height);
         }
 
         private void RegisterAppBar()
@@ -588,7 +566,8 @@ namespace NetBanner
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref q2);
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref q2);
-                this.Bounds = ComputeVisibleWindowRect();
+                
+                this.Bounds = q2.rc.ToRectangle();
                 Log("AppBar registered successfully.");
             }
             else
@@ -616,7 +595,7 @@ namespace NetBanner
             };
             NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
             NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
-            this.Bounds = ComputeVisibleWindowRect();
+            this.Bounds = abd.rc.ToRectangle();
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -626,7 +605,6 @@ namespace NetBanner
             try
             {
                 if (_settings == null) _settings = new BannerSettings();
-                
                 e.Graphics.Clear(_settings.BgColor);
 
                 string fontName = string.IsNullOrWhiteSpace(_settings.FontName) ? "Segoe UI" : _settings.FontName;
@@ -673,10 +651,7 @@ namespace NetBanner
                         TextRenderer.DrawText(e.Graphics, rightText, font, rightRect,  _settings.FgColor, flags | TextFormatFlags.Right);
                 }
             }
-            catch (Exception ex)
-            {
-                Log("OnPaint failed: " + ex.Message);
-            }
+            catch (Exception ex) { Log("OnPaint failed: " + ex.Message); }
             base.OnPaint(e);
         }
 
@@ -707,7 +682,234 @@ namespace NetBanner
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- NetBanner\NetBanner.csproj (UPDATED for single-file + embedded) ------
+# ---- Shared\BorderWindow.cs (UPDATED: Uses rcWork to avoid Taskbar) ------
+ $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
+ $borderContent = @'
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+namespace NetBanner
+{
+    internal sealed class BorderWindow : Form
+    {
+        private readonly NativeMethods.MONITORINFOEX _monitor;
+        private readonly uint _edge;
+        private BannerSettings _settings;
+        private readonly int _callbackMsg;
+        private bool _registered;
+
+        private void Log(string msg)
+        {
+            try { System.IO.File.AppendAllText("C:\\NetBanner-startup.log", $"{DateTime.Now}: [Border:{_edge}] {msg}\n"); } catch { }
+        }
+
+        public BannerSettings CurrentSettings => _settings;
+
+        public BorderWindow(NativeMethods.MONITORINFOEX monitor, BannerSettings settings, uint edge)
+        {
+            _monitor = monitor;
+            _settings = settings ?? new BannerSettings();
+            _edge = edge;
+            _callbackMsg = NativeMethods.RegisterWindowMessage("NetBannerBorderAppBarCallback");
+
+            this.ShowInTaskbar = false;
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.StartPosition = FormStartPosition.Manual;
+            this.DoubleBuffered = true;
+            this.AutoScaleMode = AutoScaleMode.None;
+            
+            this.Bounds = ComputeVisibleWindowRect();
+            Log($"BorderWindow created edge={edge} monitor={monitor.szDevice}");
+        }
+
+        public void UpdateSettings(BannerSettings newSettings)
+        {
+            if (newSettings == null) newSettings = new BannerSettings();
+            _settings = newSettings;
+            ReassertAppBar();
+            this.Invalidate();
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x00000080 | 0x08000000 | 0x00000008;
+                return cp;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { RegisterAppBar(); }
+            catch (Exception ex) { Log("RegisterAppBar failed: " + ex.Message); }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            try
+            {
+                long wParam = m.WParam.ToInt64();
+                if (m.Msg == _callbackMsg)
+                {
+                    int notify = (int)(wParam & 0xFFFFFFFF);
+                    switch (notify)
+                    {
+                        case (int)NativeMethods.ABN_POSCHANGED: ReassertAppBar(); break;
+                        case (int)NativeMethods.ABN_FULLSCREENAPP:
+                            if (m.LParam.ToInt64() == 0) ReassertTopmost();
+                            break;
+                    }
+                    return;
+                }
+                switch (m.Msg)
+                {
+                    case NativeMethods.WM_NCHITTEST:
+                        m.Result = new IntPtr(NativeMethods.HTTRANSPARENT);
+                        return;
+                    case NativeMethods.WM_SYSCOMMAND:
+                        int cmd = (int)(wParam & 0xFFF0);
+                        if (cmd == NativeMethods.SC_CLOSE || cmd == NativeMethods.SC_MOVE || cmd == NativeMethods.SC_SIZE)
+                            return;
+                        break;
+                    case NativeMethods.WM_DPICHANGED:
+                        ReassertAppBar();
+                        break;
+                }
+                base.WndProc(ref m);
+            }
+            catch (Exception ex)
+            {
+                Log("WndProc exception: " + ex.Message);
+            }
+        }
+
+        private NativeMethods.RECT ComputeAppBarRect()
+        {
+            int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
+            // Use rcWork so we don't overlap the Taskbar (e.g., Bottom border sits above Taskbar)
+            var rc = _monitor.rcWork;
+
+            switch (_edge)
+            {
+                case NativeMethods.ABE_LEFT:
+                    return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Left + size, Bottom = rc.Bottom };
+                case NativeMethods.ABE_RIGHT:
+                    return new NativeMethods.RECT { Left = rc.Right - size, Top = rc.Top, Right = rc.Right, Bottom = rc.Bottom };
+                case NativeMethods.ABE_BOTTOM:
+                    return new NativeMethods.RECT { Left = rc.Left, Top = rc.Bottom - size, Right = rc.Right, Bottom = rc.Bottom };
+                default:
+                    return new NativeMethods.RECT();
+            }
+        }
+
+        private Rectangle ComputeVisibleWindowRect()
+        {
+            var r = ComputeAppBarRect();
+            return new Rectangle(r.Left, r.Top, r.Width, r.Height);
+        }
+
+        private void RegisterAppBar()
+        {
+            NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+            {
+                cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
+                hWnd = this.Handle,
+                uCallbackMessage = (uint)_callbackMsg,
+                uEdge = _edge
+            };
+            abd.rc = ComputeAppBarRect();
+            uint r = NativeMethods.SHAppBarMessage(NativeMethods.ABM_NEW, ref abd);
+            if (r != 0)
+            {
+                _registered = true;
+                NativeMethods.APPBARDATA q2 = new NativeMethods.APPBARDATA
+                {
+                    cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
+                    hWnd = this.Handle,
+                    uCallbackMessage = (uint)_callbackMsg,
+                    uEdge = _edge,
+                    rc = ComputeAppBarRect()
+                };
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref q2);
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref q2);
+                
+                this.Bounds = q2.rc.ToRectangle();
+                Log($"AppBar registered edge={_edge}");
+            }
+            else
+            {
+                Log($"AppBar registration failed edge={_edge} (returned 0).");
+            }
+        }
+
+        public void ReassertTopmost()
+        {
+            NativeMethods.SetWindowPos(this.Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_ASYNCWINDOWPOS);
+        }
+
+        private void ReassertAppBar()
+        {
+            if (!_registered) return;
+            NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+            {
+                cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
+                hWnd = this.Handle,
+                uCallbackMessage = (uint)_callbackMsg,
+                uEdge = _edge,
+                rc = ComputeAppBarRect()
+            };
+            NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
+            NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
+            this.Bounds = abd.rc.ToRectangle();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            try
+            {
+                if (_settings == null) _settings = new BannerSettings();
+                e.Graphics.Clear(_settings.BgColor);
+            }
+            catch (Exception ex) { Log("OnPaint failed: " + ex.Message); }
+            base.OnPaint(e);
+        }
+
+        private void UnregisterAppBar()
+        {
+            if (!_registered) return;
+            try
+            {
+                NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+                {
+                    cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
+                    hWnd = this.Handle
+                };
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_REMOVE, ref abd);
+            }
+            catch { }
+            _registered = false;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) UnregisterAppBar();
+            base.Dispose(disposing);
+        }
+    }
+}
+'@
+Set-Content -LiteralPath $borderPath -Value $borderContent -Encoding UTF8
+Dbg-File $borderPath
+
+# ---- NetBanner\NetBanner.csproj -------------------------------------------
  $bannerCsprojPath = Join-Path $bannerDir 'NetBanner.csproj'
  $bannerCsprojContent = @'
 <Project Sdk="Microsoft.NET.Sdk">
@@ -723,8 +925,6 @@ Dbg-File $bannerPath
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-
-    <!-- ===== Single-file portable EXE (self-contained) ===== -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -759,7 +959,7 @@ Dbg-File $bannerCsprojPath
 Set-Content -LiteralPath $bannerManifestPath -Value $bannerManifestContent -Encoding UTF8
 Dbg-File $bannerManifestPath
 
-# ---- NetBanner\Program.cs (UPDATED: extracts embedded resources) ----------
+# ---- NetBanner\Program.cs -------------------------------------------------
  $bannerProgramPath = Join-Path $bannerDir 'Program.cs'
  $bannerProgramContent = @'
 using System;
@@ -767,6 +967,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading;
 using System.Windows.Forms;
 using NetBanner;
@@ -775,9 +976,13 @@ namespace NetBanner
 {
     internal static class Program
     {
-        private static readonly List<BannerWindow> _windows = new List<BannerWindow>();
+        private static readonly List<BannerWindow>  _windows       = new List<BannerWindow>();
+        private static readonly List<BorderWindow>  _borderWindows = new List<BorderWindow>();
+        private static List<NativeMethods.MONITORINFOEX> _monitors = new List<NativeMethods.MONITORINFOEX>();
+
         private static System.Threading.Timer _watchdog;
         private static System.Threading.Timer _envVarRefreshTimer;
+        private static System.Threading.Timer _envVarDebounce;
         private static IntPtr _winEventHook;
         private static NativeMethods.WinEventDelegate _winEventProc;
         private static FileSystemWatcher _iniWatcher;
@@ -792,7 +997,7 @@ namespace NetBanner
         private static int Main(string[] args)
         {
             Log("=========================================================");
-            Log("NetBanner starting...");
+            Log("NetBanner starting (v9 - rcWork fix)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetBannerSingleInstance", out createdNew);
@@ -842,15 +1047,15 @@ namespace NetBanner
                 }
 
                 Log("Enumerating monitors...");
-                var monitors = new List<NativeMethods.MONITORINFOEX>();
+                _monitors = new List<NativeMethods.MONITORINFOEX>();
                 NativeMethods.MonitorEnumProc callback = (IntPtr hMon, IntPtr hdc, ref NativeMethods.RECT rc, IntPtr data) =>
                 {
                     NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
-                    if (NativeMethods.GetMonitorInfo(hMon, ref mi)) monitors.Add(mi);
+                    if (NativeMethods.GetMonitorInfo(hMon, ref mi)) _monitors.Add(mi);
                     return true;
                 };
                 NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
-                Log($"Found {monitors.Count} monitor(s).");
+                Log($"Found {_monitors.Count} monitor(s).");
 
                 Log("Loading settings...");
                 BannerSettings settings = BannerSettings.Load() ?? new BannerSettings();
@@ -871,14 +1076,17 @@ namespace NetBanner
                 });
 
                 Log("Creating banner windows...");
-                foreach (var mon in monitors)
+                foreach (var mon in _monitors)
                 {
                     var w = new BannerWindow(mon, settings);
                     w.Show();
                     _windows.Add(w);
                 }
 
-                Log("Setting up watchdog and timers...");
+                Log("Creating border windows (if enabled)...");
+                ApplyBorderSettings(settings);
+
+                Log("Setting up watchdog, INI watcher, and live env-var refresh...");
                 _iniWatcher = new FileSystemWatcher(AppContext.BaseDirectory, "NetBanner.ini");
                 _iniWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size;
                 _iniWatcher.Changed += OnIniChanged;
@@ -897,30 +1105,26 @@ namespace NetBanner
                     {
                         IntPtr top = NativeMethods.GetTopWindow(NativeMethods.GetDesktopWindow());
                         bool ours = false;
-                        foreach (var w in _windows) if (w.Handle == top) { ours = true; break; }
-                        if (!ours) foreach (var w in _windows) w.ReassertTopmost();
+                        foreach (var w in _windows)       if (w.Handle == top) { ours = true; break; }
+                        if (!ours) foreach (var w in _borderWindows) if (w.Handle == top) { ours = true; break; }
+                        if (!ours)
+                        {
+                            foreach (var w in _windows)       w.ReassertTopmost();
+                            foreach (var w in _borderWindows) w.ReassertTopmost();
+                        }
                     }
                     catch { }
                 }, null, 250, 250);
 
-                _envVarRefreshTimer = new System.Threading.Timer(_ =>
+                try
                 {
-                    try
-                    {
-                        foreach (var w in _windows)
-                        {
-                            var s = w.CurrentSettings;
-                            if (s != null)
-                            {
-                                s.EvaluateCustomEnvVars();
-                                if (w.IsHandleCreated)
-                                    w.Invoke((Action)(() => w.Invalidate()));
-                                break; 
-                            }
-                        }
-                    }
-                    catch { }
-                }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+                    NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+                    Log("Subscribed to NetworkChange.NetworkAddressChanged.");
+                }
+                catch (Exception ex) { Log("NetworkAddressChanged subscribe failed: " + ex.Message); }
+
+                _envVarRefreshTimer = new System.Threading.Timer(_ => RefreshEnvVars(reason: "poll"),
+                    null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
                 Log("Starting application loop...");
                 Application.Run();
@@ -939,10 +1143,54 @@ namespace NetBanner
             return 0;
         }
 
-        /// <summary>
-        /// Extracts an embedded resource to a file on disk. Searches by suffix
-        /// so it works regardless of the root-namespace prefix.
-        /// </summary>
+        private static void ApplyBorderSettings(BannerSettings settings)
+        {
+            bool currentEnabled = _borderWindows.Count > 0;
+            bool newEnabled = settings != null && settings.BorderEnabled && settings.BorderSize > 0;
+            bool sizeChanged = currentEnabled && newEnabled 
+                && (_borderWindows[0].CurrentSettings.BorderSize != settings.BorderSize || _borderWindows[0].CurrentSettings.HeightPx != settings.HeightPx);
+
+            if (currentEnabled != newEnabled || sizeChanged)
+            {
+                try
+                {
+                    foreach (var w in _borderWindows) w.Dispose();
+                    _borderWindows.Clear();
+
+                    if (newEnabled)
+                    {
+                        foreach (var mon in _monitors)
+                        {
+                            var lw = new BorderWindow(mon, settings, NativeMethods.ABE_LEFT);
+                            lw.Show();
+                            _borderWindows.Add(lw);
+
+                            var rw = new BorderWindow(mon, settings, NativeMethods.ABE_RIGHT);
+                            rw.Show();
+                            _borderWindows.Add(rw);
+
+                            var bw = new BorderWindow(mon, settings, NativeMethods.ABE_BOTTOM);
+                            bw.Show();
+                            _borderWindows.Add(bw);
+                        }
+                        Log($"Created {_borderWindows.Count} border window(s).");
+                    }
+                    else
+                    {
+                        Log("Borders disabled.");
+                    }
+                }
+                catch (Exception ex) { Log("ApplyBorderSettings failed: " + ex.Message); }
+            }
+            else if (currentEnabled && newEnabled)
+            {
+                foreach (var w in _borderWindows)
+                {
+                    w.UpdateSettings(settings);
+                }
+            }
+        }
+
         private static void ExtractEmbeddedResource(string resourceName, string destinationPath)
         {
             var asm = System.Reflection.Assembly.GetExecutingAssembly();
@@ -988,10 +1236,18 @@ namespace NetBanner
                     try
                     {
                         newSettings.EvaluateCustomEnvVars();
-                        foreach (var w in _windows)
+                        
+                        if (_windows.Count > 0 && _windows[0].IsHandleCreated)
                         {
-                            if (w != null && w.IsHandleCreated)
-                                w.Invoke((Action)(() => w.UpdateSettings(newSettings)));
+                            _windows[0].Invoke((Action)(() =>
+                            {
+                                foreach (var w in _windows)
+                                {
+                                    if (w != null && w.IsHandleCreated)
+                                        w.UpdateSettings(newSettings);
+                                }
+                                ApplyBorderSettings(newSettings);
+                            }));
                         }
                     }
                     catch (Exception ex) { Log("Failed to apply new settings: " + ex.Message); }
@@ -1002,7 +1258,39 @@ namespace NetBanner
 
         private static void OnWinEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            foreach (var w in _windows) w.ReassertTopmost();
+            foreach (var w in _windows)       w.ReassertTopmost();
+            foreach (var w in _borderWindows) w.ReassertTopmost();
+        }
+
+        private static void RefreshEnvVars(string reason)
+        {
+            try
+            {
+                if (_windows.Count == 0) return;
+                var s = _windows[0].CurrentSettings;
+                if (s == null) return;
+
+                Log($"Refreshing env vars ({reason})...");
+                s.EvaluateCustomEnvVars();
+                foreach (var w in _windows)
+                {
+                    if (w != null && w.IsHandleCreated)
+                        w.Invoke((Action)(() => w.Invalidate()));
+                }
+            }
+            catch (Exception ex) { Log($"Env var refresh ({reason}) failed: " + ex.Message); }
+        }
+
+        private static void OnNetworkAddressChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                Log("NetworkAddressChanged event received. Debouncing...");
+                _envVarDebounce?.Dispose();
+                _envVarDebounce = new System.Threading.Timer(_ => RefreshEnvVars(reason: "network-change"),
+                    null, TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+            }
+            catch (Exception ex) { Log("OnNetworkAddressChanged failed: " + ex.Message); }
         }
 
         private static void Cleanup()
@@ -1012,7 +1300,10 @@ namespace NetBanner
                 if (_winEventHook != IntPtr.Zero) NativeMethods.UnhookWinEvent(_winEventHook);
                 _watchdog?.Dispose();
                 _envVarRefreshTimer?.Dispose();
+                _envVarDebounce?.Dispose();
                 _iniWatcher?.Dispose();
+                foreach (var w in _borderWindows) w.Dispose();
+                _borderWindows.Clear();
                 foreach (var w in _windows) w.Dispose();
                 _windows.Clear();
             }
@@ -1024,7 +1315,7 @@ namespace NetBanner
 Set-Content -LiteralPath $bannerProgramPath -Value $bannerProgramContent -Encoding UTF8
 Dbg-File $bannerProgramPath
 
-# ---- NetBanner\Configurator.html (EMBEDDED RESOURCE — lives next to csproj)
+# ---- NetBanner\Configurator.html -----------------------------------------
  $htmlPath = Join-Path $bannerDir 'Configurator.html'
  $htmlContent = @'
 <!DOCTYPE html>
@@ -1084,6 +1375,7 @@ Dbg-File $bannerProgramPath
       align-items: center; padding: 0 12px;
       white-space: nowrap; overflow: hidden;
       transition: background-color var(--transition-fast), color var(--transition-fast), height var(--transition-fast);
+      box-sizing: border-box;
     }
     .live-appbar-strip.with-banner-shadow { box-shadow: 0 4px 14px rgba(0,0,0,0.45); }
     .live-appbar-strip.with-text-shadow .banner-slot { text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
@@ -1175,6 +1467,7 @@ Dbg-File $bannerProgramPath
     .btn-secondary:hover { background: var(--bg-surface-subtle); border-color: var(--border-focus); }
     .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
     .help-callout { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: #92400e; margin-top: 8px; line-height: 1.5; }
+    .info-callout { background: var(--accent-subtle); border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: #1e40af; margin-top: 8px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -1245,7 +1538,7 @@ Dbg-File $bannerProgramPath
       <div class="card-header">
         <div>
           <h2 class="card-title"><span class="step-number">3</span> Customize Look</h2>
-          <p class="card-subtitle">Change colors, fonts, size, and add drop shadows to make the banner look exactly how you want.</p>
+          <p class="card-subtitle">Change colors, fonts, size, add drop shadows, and wrap a border around the screen edges.</p>
         </div>
       </div>
       <div class="grid-2">
@@ -1281,6 +1574,24 @@ Dbg-File $bannerProgramPath
           </div>
           <label class="switch"><input type="checkbox" id="chkBannerShadow" checked onchange="updateAll()"><span class="slider-toggle"></span></label>
         </div>
+      </div>
+      <div style="height: 1px; background: var(--border-subtle); margin: 18px 0;"></div>
+      <div class="form-group">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Screen border (left, right, bottom)</div>
+            <div class="toggle-hint">Wraps a colored border around the left, right, and bottom of every monitor. Same color as the banner. Reserves screen space so maximized windows avoid it &mdash; just like the top banner.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="chkBorderEnabled" onchange="updateAll()"><span class="slider-toggle"></span></label>
+        </div>
+      </div>
+      <div class="form-group" id="borderSizeGroup" style="opacity: 0.5; pointer-events: none;">
+        <div class="field-label"><span>Border thickness</span><span class="field-hint">In pixels</span></div>
+        <div class="slider-container">
+          <input type="range" id="sliderBorderSize" class="slider-input" min="1" max="24" value="4" oninput="syncBorderSize(this.value)">
+          <div class="slider-val-badge" id="borderSizeBadge">4 px</div>
+        </div>
+        <div class="info-callout">The border color automatically matches the banner background color. Change the background color above to change the border color.</div>
       </div>
       <div style="height: 1px; background: var(--border-subtle); margin: 18px 0;"></div>
       <div class="grid-2">
@@ -1373,7 +1684,7 @@ Dbg-File $bannerProgramPath
       <div class="env-list" id="envList"></div>
       <div style="padding: 0 20px 20px 20px;">
         <button class="btn btn-secondary btn-sm" onclick="addEnvRow('', '')">+ Add Variable</button>
-        <div class="help-callout"><strong>Example:</strong> Create a variable called <code>IP_ADDRESS</code> with the value <code>(Get-NetIPAddress -AddressFamily IPv4 ...).IPAddress</code> (starts with <code>$</code>). Then in your banner text, type <code>%IP_ADDRESS%</code> to show it.</div>
+        <div class="help-callout"><strong>Example:</strong> Create a variable called <code>IP_ADDRESS</code> with a value starting with <code>$</code> (PowerShell). Then in your banner text, type <code>%IP_ADDRESS%</code> to show it. The running banner re-evaluates these every 30 seconds and immediately when your network changes &mdash; so an IP address change shows up live within a couple of seconds.</div>
       </div>
     </details>
   </main>
@@ -1413,6 +1724,7 @@ Dbg-File $bannerProgramPath
       bgColor: "#007a33", fgColor: "#ffffff", fontName: "Segoe UI", fontSize: 10,
       fontBold: true, fontItalic: false, fontUnderline: false, heightPx: 24,
       textShadow: false, textShadowColor: "#000000", textShadowOffset: 2, bannerShadow: true,
+      borderEnabled: false, borderSize: 4,
       customEnvVars: [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }]
     };
     const mockSystemEnv = { "COMPUTERNAME": "WORKSTATION-01", "USERNAME": "AdminUser", "USERDOMAIN": "CORPNET" };
@@ -1452,9 +1764,16 @@ Dbg-File $bannerProgramPath
       appState.fontUnderline = document.getElementById('chkFontUnderline').checked;
       appState.textShadow = document.getElementById('chkTextShadow').checked;
       appState.bannerShadow = document.getElementById('chkBannerShadow').checked;
+      appState.borderEnabled = document.getElementById('chkBorderEnabled').checked;
+
       const tsControls = document.getElementById('textShadowControls');
       if (appState.textShadow) { tsControls.style.opacity = '1'; tsControls.style.pointerEvents = 'auto'; }
       else { tsControls.style.opacity = '0.5'; tsControls.style.pointerEvents = 'none'; }
+
+      const borderGroup = document.getElementById('borderSizeGroup');
+      if (appState.borderEnabled) { borderGroup.style.opacity = '1'; borderGroup.style.pointerEvents = 'auto'; }
+      else { borderGroup.style.opacity = '0.5'; borderGroup.style.pointerEvents = 'none'; }
+
       const banner = document.getElementById('liveBanner');
       banner.style.height = `${appState.heightPx}px`;
       banner.style.backgroundColor = appState.bgColor;
@@ -1466,11 +1785,25 @@ Dbg-File $bannerProgramPath
       banner.style.textDecoration = appState.fontUnderline ? 'underline' : 'none';
       banner.classList.toggle('with-banner-shadow', appState.bannerShadow);
       banner.classList.toggle('with-text-shadow', appState.textShadow);
+
+      if (appState.borderEnabled) {
+        const b = `${appState.borderSize}px solid ${appState.bgColor}`;
+        banner.style.borderLeft = b;
+        banner.style.borderRight = b;
+        banner.style.borderBottom = b;
+        banner.style.borderTop = 'none';
+      } else {
+        banner.style.borderLeft = '';
+        banner.style.borderRight = '';
+        banner.style.borderBottom = '';
+      }
+
       document.getElementById('slotLeft').textContent = expandPreview(appState.textLeft);
       document.getElementById('slotCenter').textContent = expandPreview(appState.textCenter);
       document.getElementById('slotRight').textContent = expandPreview(appState.textRight);
     }
     function syncHeight(val) { appState.heightPx = parseInt(val); document.getElementById('heightBadge').textContent = `${val} px`; updateAll(); }
+    function syncBorderSize(val) { appState.borderSize = parseInt(val); document.getElementById('borderSizeBadge').textContent = `${val} px`; updateAll(); }
     function syncColor(type, val) {
       if (type === 'bg') { appState.bgColor = val; document.getElementById('bgCircle').style.backgroundColor = val; document.getElementById('bgHexLabel').textContent = val.toUpperCase(); }
       else if (type === 'fg') { appState.fgColor = val; document.getElementById('fgCircle').style.backgroundColor = val; document.getElementById('fgHexLabel').textContent = val.toUpperCase(); }
@@ -1537,6 +1870,8 @@ Dbg-File $bannerProgramPath
       ini += `TextShadowColor=${hexToSignedArgb(appState.textShadowColor)}\r\n`;
       ini += `TextShadowOffset=${appState.textShadowOffset}\r\n`;
       ini += `BannerShadow=${appState.bannerShadow ? "True" : "False"}\r\n`;
+      ini += `BorderEnabled=${appState.borderEnabled ? "True" : "False"}\r\n`;
+      ini += `BorderSize=${appState.borderSize}\r\n`;
       const validVars = appState.customEnvVars.filter(v => v.key.trim() !== "");
       if (validVars.length > 0) {
         ini += `\r\n[EnvVars]\r\n`;
@@ -1552,7 +1887,7 @@ Dbg-File $bannerProgramPath
           const writable = await handle.createWritable();
           await writable.write(text);
           await writable.close();
-          alert("Saved! The running banner will update automatically.");
+          alert("Saved! The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.");
         } catch (err) { console.error("Save cancelled or failed:", err); }
       } else {
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -1575,12 +1910,15 @@ Dbg-File $bannerProgramPath
       document.getElementById('chkFontUnderline').checked = false;
       document.getElementById('chkTextShadow').checked = false;
       document.getElementById('chkBannerShadow').checked = true;
+      document.getElementById('chkBorderEnabled').checked = false;
+      document.getElementById('sliderBorderSize').value = 4;
       document.getElementById('sliderTextShadowOffset').value = 2;
       document.getElementById('pickerTextShadow').value = '#000000';
       syncColor('bg', '#007a33');
       syncColor('fg', '#ffffff');
       syncColor('ts', '#000000');
       syncHeight(24);
+      syncBorderSize(4);
       syncTextShadowOffset(2);
       appState.customEnvVars = [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }];
       document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
@@ -1598,7 +1936,7 @@ Dbg-File $bannerProgramPath
 Set-Content -LiteralPath $htmlPath -Value $htmlContent -Encoding UTF8
 Dbg-File $htmlPath
 
-# ---- NetBanner\NetBanner.default.ini (EMBEDDED RESOURCE — new file) -------
+# ---- NetBanner\NetBanner.default.ini --------------------------------------
  $defaultIniPath = Join-Path $bannerDir 'NetBanner.default.ini'
  $defaultIniContent = @'
 [Settings]
@@ -1617,6 +1955,8 @@ TextShadow=False
 TextShadowColor=-16777216
 TextShadowOffset=2
 BannerShadow=True
+BorderEnabled=False
+BorderSize=4
 
 [EnvVars]
 IP_ADDRESS=$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress
@@ -1653,7 +1993,6 @@ Dbg-Info "(This produces a self-contained single-file EXE — may take 30-60s an
 
 if ($publishExitCode -ne 0) { throw "publish failed for NetBanner" }
 
-# Clean up auxiliary files (PDB, XML docs) so only the single .exe remains
 Get-ChildItem -Path $publishDir -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 Get-ChildItem -Path $publishDir -Filter "*.xml" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
@@ -1673,7 +2012,6 @@ Dbg-Step "Phase 5: Run"
 Dbg-Info "Killing any existing NetBanner processes..."
 Get-Process -Name "NetBanner" -ErrorAction SilentlyContinue | Stop-Process -Force
 
-# Remove old extracted files so first-run extraction kicks in fresh
 Remove-Item -Path (Join-Path $publishDir 'NetBanner.ini')          -ErrorAction SilentlyContinue
 Remove-Item -Path (Join-Path $publishDir 'Configurator.html')      -ErrorAction SilentlyContinue
 Remove-Item -Path "C:\NetBanner-startup.log"                       -ErrorAction SilentlyContinue
@@ -1688,7 +2026,7 @@ if (-not $running) {
     $logFile = "C:\NetBanner-startup.log"
     if (Test-Path $logFile) {
         Write-Host "`n--- Crash Log ---" -ForegroundColor Red
-        Get-Content $logFile -Tail 20
+        Get-Content $logFile -Tail 30
         Write-Host "-----------------`n" -ForegroundColor Red
     }
 } else {
@@ -1697,12 +2035,12 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetBanner (portable single-file) is running in background."          -ForegroundColor White
+Write-Host " NetBanner (v9) is running in background."                              -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetBanner.ini to this folder:"                               -ForegroundColor White
 Write-Host "   $publishDir"                                                        -ForegroundColor Yellow
-Write-Host " The banner will instantly update when you click Save."               -ForegroundColor White
+Write-Host " The banner updates instantly when you click Save."                   -ForegroundColor White
 Write-Host ""
 Write-Host " The portable EXE is at:"                                              -ForegroundColor White
 Write-Host "   $exePath"                                                           -ForegroundColor Green
