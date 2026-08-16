@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Bootstraps the NetBanner C# project from scratch, compiles as a single
+    Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v9 - Uses rcWork to fix taskbar overlap and corner gaps.
+    v16 - Stacked floating buttons, hidden Rainbow Mode easter egg.
 #>
 
 [CmdletBinding()]
 param(
-    [string]$ProjectRoot = "C:\Dev\NetBanner",
+    [string]$ProjectRoot = "C:\Dev\NetMark",
     [string]$Configuration = "Release"
 )
 
@@ -23,7 +23,7 @@ function Dbg-File { param([string]$p) Write-Host "        -> wrote: $p" -Foregro
 
  $srcDir       = Join-Path $ProjectRoot 'src'
  $sharedDir    = Join-Path $srcDir 'Shared'
- $bannerDir    = Join-Path $srcDir 'NetBanner'
+ $bannerDir    = Join-Path $srcDir 'NetMark'
  $objDir       = Join-Path $ProjectRoot 'obj'
  $binDir       = Join-Path $ProjectRoot 'bin'
  $artifactsDir = Join-Path $binDir $Configuration
@@ -70,7 +70,7 @@ using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 
-namespace NetBanner
+namespace NetMark
 {
     internal static class NativeMethods
     {
@@ -190,12 +190,12 @@ using System.Drawing;
 using System.IO;
 using System.Text;
 
-namespace NetBanner
+namespace NetMark
 {
     internal sealed class BannerSettings
     {
-        public string TextLeft    = "";
-        public string TextCenter  = "UNCLASSIFIED // FOUO - %COMPUTERNAME%";
+        public string TextLeft    = "%IP_ADDRESS%";
+        public string TextCenter  = "%COMPUTERNAME%";
         public string TextRight   = "%USERNAME%";
         public Color   BgColor    = Color.Green;
         public Color   FgColor    = Color.Black;
@@ -214,12 +214,14 @@ namespace NetBanner
         public bool    BorderEnabled    = false;
         public int     BorderSize       = 4;
 
+        public bool    RainbowMode      = false; 
+
         public Dictionary<string, string> CustomEnvVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         
         private Dictionary<string, string> _expandedVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly object _varLock = new object();
 
-        public static string GetIniPath() => Path.Combine(AppContext.BaseDirectory, "NetBanner.ini");
+        public static string GetIniPath() => Path.Combine(AppContext.BaseDirectory, "NetMark.ini");
 
         public static BannerSettings Load()
         {
@@ -279,6 +281,7 @@ namespace NetBanner
                         case "BannerShadow":      try { s.BannerShadow = bool.Parse(val); } catch { } break;
                         case "BorderEnabled":     try { s.BorderEnabled = bool.Parse(val); } catch { } break;
                         case "BorderSize":        try { s.BorderSize = int.Parse(val); } catch { } break;
+                        case "RainbowMode":       try { s.RainbowMode = bool.Parse(val); } catch { } break;
                     }
                 }
             }
@@ -311,6 +314,12 @@ namespace NetBanner
             sb.AppendLine($"BannerShadow={BannerShadow}");
             sb.AppendLine($"BorderEnabled={BorderEnabled}");
             sb.AppendLine($"BorderSize={BorderSize}");
+            
+            // Only serialize RainbowMode if it's true, to hide it from normal users
+            if (RainbowMode)
+            {
+                sb.AppendLine($"RainbowMode={RainbowMode}");
+            }
             
             if (CustomEnvVars != null && CustomEnvVars.Count > 0)
             {
@@ -405,7 +414,7 @@ namespace NetBanner
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs (UPDATED: Full width, uses rcWork) -----------
+# ---- Shared\BannerWindow.cs (UPDATED: Rainbow Brighter & Refresh) --------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -413,7 +422,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace NetBanner
+namespace NetMark
 {
     internal sealed class BannerWindow : Form
     {
@@ -421,17 +430,19 @@ namespace NetBanner
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
+        private int _hue = 0;
+        private System.Windows.Forms.Timer _rainbowTimer;
 
         private void Log(string msg)
         {
-            try { System.IO.File.AppendAllText("C:\\NetBanner-startup.log", $"{DateTime.Now}: [Banner] {msg}\n"); } catch { }
+            try { System.IO.File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: [Banner] {msg}\n"); } catch { }
         }
 
         public BannerWindow(NativeMethods.MONITORINFOEX monitor, BannerSettings settings)
         {
             _monitor = monitor;
             _settings = settings ?? new BannerSettings();
-            _callbackMsg = NativeMethods.RegisterWindowMessage("NetBannerAppBarCallback");
+            _callbackMsg = NativeMethods.RegisterWindowMessage("NetMarkAppBarCallback");
 
             this.ShowInTaskbar = false;
             this.FormBorderStyle = FormBorderStyle.None;
@@ -441,6 +452,8 @@ namespace NetBanner
             
             this.Bounds = ComputeVisibleWindowRect();
             Log("BannerWindow created for monitor: " + monitor.szDevice);
+            
+            if (_settings.RainbowMode) StartRainbowTimer();
         }
 
         public BannerSettings CurrentSettings => _settings;
@@ -462,7 +475,32 @@ namespace NetBanner
             {
                 ReassertAppBar();
             }
+
+            if (_settings.RainbowMode) StartRainbowTimer();
+            else StopRainbowTimer();
+
             this.Invalidate();
+        }
+
+        private void StartRainbowTimer()
+        {
+            if (_rainbowTimer == null)
+            {
+                _rainbowTimer = new System.Windows.Forms.Timer();
+                _rainbowTimer.Interval = 50; 
+                _rainbowTimer.Tick += (s, e) => 
+                {
+                    _hue = (_hue + 5) % 360;
+                    this.Invalidate();
+                    this.Update(); 
+                };
+            }
+            if (!_rainbowTimer.Enabled) _rainbowTimer.Start();
+        }
+
+        private void StopRainbowTimer()
+        {
+            _rainbowTimer?.Stop();
         }
 
         protected override CreateParams CreateParams
@@ -526,12 +564,9 @@ namespace NetBanner
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            // Use rcWork so we respect the Taskbar area automatically
             var rc = _monitor.rcWork;
             int y = rc.Top;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
-
-            // Top banner spans the entire width of the Work Area to prevent corner gaps
             return new NativeMethods.RECT { Left = rc.Left, Top = y, Right = rc.Right, Bottom = y + h };
         }
 
@@ -566,7 +601,6 @@ namespace NetBanner
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref q2);
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref q2);
-                
                 this.Bounds = q2.rc.ToRectangle();
                 Log("AppBar registered successfully.");
             }
@@ -605,7 +639,13 @@ namespace NetBanner
             try
             {
                 if (_settings == null) _settings = new BannerSettings();
-                e.Graphics.Clear(_settings.BgColor);
+                
+                Color bg = _settings.BgColor;
+                if (_settings.RainbowMode)
+                {
+                    bg = ColorFromHSV(_hue, 1.0, 0.85);
+                }
+                e.Graphics.Clear(bg);
 
                 string fontName = string.IsNullOrWhiteSpace(_settings.FontName) ? "Segoe UI" : _settings.FontName;
                 float fontSize = _settings.FontSize <= 0 ? 10f : _settings.FontSize;
@@ -655,6 +695,23 @@ namespace NetBanner
             base.OnPaint(e);
         }
 
+        private static Color ColorFromHSV(double hue, double saturation, double value)
+        {
+            int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
+            double f = hue / 60 - Math.Floor(hue / 60);
+            value = value * 255;
+            int v = Convert.ToInt32(value);
+            int p = Convert.ToInt32(value * (1 - saturation));
+            int q = Convert.ToInt32(value * (1 - f * saturation));
+            int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
+            if (hi == 0) return Color.FromArgb(255, v, t, p);
+            else if (hi == 1) return Color.FromArgb(255, q, v, p);
+            else if (hi == 2) return Color.FromArgb(255, p, v, t);
+            else if (hi == 3) return Color.FromArgb(255, p, q, v);
+            else if (hi == 4) return Color.FromArgb(255, t, p, v);
+            else return Color.FromArgb(255, v, p, q);
+        }
+
         private void UnregisterAppBar()
         {
             if (!_registered) return;
@@ -673,7 +730,11 @@ namespace NetBanner
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) UnregisterAppBar();
+            if (disposing) 
+            {
+                StopRainbowTimer();
+                UnregisterAppBar();
+            }
             base.Dispose(disposing);
         }
     }
@@ -682,7 +743,7 @@ namespace NetBanner
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs (UPDATED: Uses rcWork to avoid Taskbar) ------
+# ---- Shared\BorderWindow.cs (UPDATED: Rainbow Brighter & Refresh) -------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -690,7 +751,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace NetBanner
+namespace NetMark
 {
     internal sealed class BorderWindow : Form
     {
@@ -699,10 +760,12 @@ namespace NetBanner
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
+        private int _hue = 0;
+        private System.Windows.Forms.Timer _rainbowTimer;
 
         private void Log(string msg)
         {
-            try { System.IO.File.AppendAllText("C:\\NetBanner-startup.log", $"{DateTime.Now}: [Border:{_edge}] {msg}\n"); } catch { }
+            try { System.IO.File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: [Border:{_edge}] {msg}\n"); } catch { }
         }
 
         public BannerSettings CurrentSettings => _settings;
@@ -712,7 +775,7 @@ namespace NetBanner
             _monitor = monitor;
             _settings = settings ?? new BannerSettings();
             _edge = edge;
-            _callbackMsg = NativeMethods.RegisterWindowMessage("NetBannerBorderAppBarCallback");
+            _callbackMsg = NativeMethods.RegisterWindowMessage("NetMarkBorderAppBarCallback");
 
             this.ShowInTaskbar = false;
             this.FormBorderStyle = FormBorderStyle.None;
@@ -722,6 +785,8 @@ namespace NetBanner
             
             this.Bounds = ComputeVisibleWindowRect();
             Log($"BorderWindow created edge={edge} monitor={monitor.szDevice}");
+
+            if (_settings.RainbowMode) StartRainbowTimer();
         }
 
         public void UpdateSettings(BannerSettings newSettings)
@@ -729,7 +794,32 @@ namespace NetBanner
             if (newSettings == null) newSettings = new BannerSettings();
             _settings = newSettings;
             ReassertAppBar();
+
+            if (_settings.RainbowMode) StartRainbowTimer();
+            else StopRainbowTimer();
+
             this.Invalidate();
+        }
+
+        private void StartRainbowTimer()
+        {
+            if (_rainbowTimer == null)
+            {
+                _rainbowTimer = new System.Windows.Forms.Timer();
+                _rainbowTimer.Interval = 50; 
+                _rainbowTimer.Tick += (s, e) => 
+                {
+                    _hue = (_hue + 5) % 360;
+                    this.Invalidate();
+                    this.Update(); 
+                };
+            }
+            if (!_rainbowTimer.Enabled) _rainbowTimer.Start();
+        }
+
+        private void StopRainbowTimer()
+        {
+            _rainbowTimer?.Stop();
         }
 
         protected override CreateParams CreateParams
@@ -738,6 +828,8 @@ namespace NetBanner
             {
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= 0x00000080 | 0x08000000 | 0x00000008;
+                if (_settings != null && _settings.BannerShadow)
+                    cp.ClassStyle |= 0x00020000; 
                 return cp;
             }
         }
@@ -791,7 +883,6 @@ namespace NetBanner
         private NativeMethods.RECT ComputeAppBarRect()
         {
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
-            // Use rcWork so we don't overlap the Taskbar (e.g., Bottom border sits above Taskbar)
             var rc = _monitor.rcWork;
 
             switch (_edge)
@@ -837,7 +928,6 @@ namespace NetBanner
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref q2);
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref q2);
-                
                 this.Bounds = q2.rc.ToRectangle();
                 Log($"AppBar registered edge={_edge}");
             }
@@ -876,10 +966,33 @@ namespace NetBanner
             try
             {
                 if (_settings == null) _settings = new BannerSettings();
-                e.Graphics.Clear(_settings.BgColor);
+                
+                Color bg = _settings.BgColor;
+                if (_settings.RainbowMode)
+                {
+                    bg = ColorFromHSV(_hue, 1.0, 0.85);
+                }
+                e.Graphics.Clear(bg);
             }
             catch (Exception ex) { Log("OnPaint failed: " + ex.Message); }
             base.OnPaint(e);
+        }
+
+        private static Color ColorFromHSV(double hue, double saturation, double value)
+        {
+            int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
+            double f = hue / 60 - Math.Floor(hue / 60);
+            value = value * 255;
+            int v = Convert.ToInt32(value);
+            int p = Convert.ToInt32(value * (1 - saturation));
+            int q = Convert.ToInt32(value * (1 - f * saturation));
+            int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
+            if (hi == 0) return Color.FromArgb(255, v, t, p);
+            else if (hi == 1) return Color.FromArgb(255, q, v, p);
+            else if (hi == 2) return Color.FromArgb(255, p, v, t);
+            else if (hi == 3) return Color.FromArgb(255, p, q, v);
+            else if (hi == 4) return Color.FromArgb(255, t, p, v);
+            else return Color.FromArgb(255, v, p, q);
         }
 
         private void UnregisterAppBar()
@@ -900,7 +1013,11 @@ namespace NetBanner
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) UnregisterAppBar();
+            if (disposing) 
+            {
+                StopRainbowTimer();
+                UnregisterAppBar();
+            }
             base.Dispose(disposing);
         }
     }
@@ -909,8 +1026,8 @@ namespace NetBanner
 Set-Content -LiteralPath $borderPath -Value $borderContent -Encoding UTF8
 Dbg-File $borderPath
 
-# ---- NetBanner\NetBanner.csproj -------------------------------------------
- $bannerCsprojPath = Join-Path $bannerDir 'NetBanner.csproj'
+# ---- NetMark\NetMark.csproj -----------------------------------------------
+ $bannerCsprojPath = Join-Path $bannerDir 'NetMark.csproj'
  $bannerCsprojContent = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -920,8 +1037,8 @@ Dbg-File $borderPath
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>NetBanner</AssemblyName>
-    <RootNamespace>NetBanner</RootNamespace>
+    <AssemblyName>NetMark</AssemblyName>
+    <RootNamespace>NetMark</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
@@ -934,19 +1051,19 @@ Dbg-File $borderPath
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" />
     <EmbeddedResource Include="Configurator.html" />
-    <EmbeddedResource Include="NetBanner.default.ini" />
+    <EmbeddedResource Include="NetMark.default.ini" />
   </ItemGroup>
 </Project>
 '@
 Set-Content -LiteralPath $bannerCsprojPath -Value $bannerCsprojContent -Encoding UTF8
 Dbg-File $bannerCsprojPath
 
-# ---- NetBanner\app.manifest -----------------------------------------------
+# ---- NetMark\app.manifest -----------------------------------------------
  $bannerManifestPath = Join-Path $bannerDir 'app.manifest'
  $bannerManifestContent = @'
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="NetBanner.app" />
+  <assemblyIdentity version="1.0.0.0" name="NetMark.app" />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -959,7 +1076,7 @@ Dbg-File $bannerCsprojPath
 Set-Content -LiteralPath $bannerManifestPath -Value $bannerManifestContent -Encoding UTF8
 Dbg-File $bannerManifestPath
 
-# ---- NetBanner\Program.cs -------------------------------------------------
+# ---- NetMark\Program.cs -------------------------------------------------
  $bannerProgramPath = Join-Path $bannerDir 'Program.cs'
  $bannerProgramContent = @'
 using System;
@@ -970,9 +1087,9 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Threading;
 using System.Windows.Forms;
-using NetBanner;
+using NetMark;
 
-namespace NetBanner
+namespace NetMark
 {
     internal static class Program
     {
@@ -990,17 +1107,17 @@ namespace NetBanner
 
         private static void Log(string msg)
         {
-            try { File.AppendAllText("C:\\NetBanner-startup.log", $"{DateTime.Now}: {msg}\n"); } catch { }
+            try { File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: {msg}\n"); } catch { }
         }
 
         [STAThread]
         private static int Main(string[] args)
         {
             Log("=========================================================");
-            Log("NetBanner starting (v9 - rcWork fix)...");
+            Log("NetMark starting (v16 - Easter Egg)...");
             
             bool createdNew;
-            _mutex = new Mutex(true, "Global\\NetBannerSingleInstance", out createdNew);
+            _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
             if (!createdNew)
             {
                 Log("Another instance is already running. Exiting.");
@@ -1021,7 +1138,7 @@ namespace NetBanner
                     Log("INI file missing. Extracting embedded default INI...");
                     try
                     {
-                        ExtractEmbeddedResource("NetBanner.default.ini", BannerSettings.GetIniPath());
+                        ExtractEmbeddedResource("NetMark.default.ini", BannerSettings.GetIniPath());
                         Log("Extracted default INI to: " + BannerSettings.GetIniPath());
                     }
                     catch (Exception ex)
@@ -1087,7 +1204,7 @@ namespace NetBanner
                 ApplyBorderSettings(settings);
 
                 Log("Setting up watchdog, INI watcher, and live env-var refresh...");
-                _iniWatcher = new FileSystemWatcher(AppContext.BaseDirectory, "NetBanner.ini");
+                _iniWatcher = new FileSystemWatcher(AppContext.BaseDirectory, "NetMark.ini");
                 _iniWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size;
                 _iniWatcher.Changed += OnIniChanged;
                 _iniWatcher.Created += OnIniChanged;
@@ -1133,7 +1250,7 @@ namespace NetBanner
             catch (Exception ex)
             {
                 Log("FATAL ERROR: " + ex.ToString());
-                MessageBox.Show("NetBanner crashed:\n\n" + ex.ToString(), "NetBanner Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("NetMark crashed:\n\n" + ex.ToString(), "NetMark Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -1315,7 +1432,7 @@ namespace NetBanner
 Set-Content -LiteralPath $bannerProgramPath -Value $bannerProgramContent -Encoding UTF8
 Dbg-File $bannerProgramPath
 
-# ---- NetBanner\Configurator.html -----------------------------------------
+# ---- NetMark\Configurator.html -----------------------------------------
  $htmlPath = Join-Path $bannerDir 'Configurator.html'
  $htmlContent = @'
 <!DOCTYPE html>
@@ -1323,7 +1440,7 @@ Dbg-File $bannerProgramPath
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NetBanner Configurator</title>
+  <title>NetMark Configurator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1369,37 +1486,54 @@ Dbg-File $bannerProgramPath
       display: flex;
       flex-direction: column;
     }
+    #screenSimulator {
+      position: fixed; inset: 0; pointer-events: none; z-index: 9999; border: 0 solid transparent;
+    }
+    #bannerWrapper {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-app);
+      padding-bottom: 15px; 
+    }
     .live-appbar-strip {
-      position: sticky; top: 0; z-index: 100; width: 100%;
+      width: 100%;
       display: grid; grid-template-columns: 1fr 1fr 1fr;
       align-items: center; padding: 0 12px;
       white-space: nowrap; overflow: hidden;
-      transition: background-color var(--transition-fast), color var(--transition-fast), height var(--transition-fast);
+      transition: background-color var(--transition-fast), color var(--transition-fast), height var(--transition-fast), box-shadow var(--transition-fast);
       box-sizing: border-box;
     }
-    .live-appbar-strip.with-banner-shadow { box-shadow: 0 4px 14px rgba(0,0,0,0.45); }
-    .live-appbar-strip.with-text-shadow .banner-slot { text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
-    .banner-slot { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
-    .slot-left { text-align: left; }
-    .slot-center { text-align: center; }
-    .slot-right { text-align: right; }
+    .banner-slot {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 4px;
+    }
+    .slot-left { justify-content: flex-start; }
+    .slot-center { justify-content: center; }
+    .slot-right { justify-content: flex-end; }
     header.app-header {
       background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle);
       padding: 12px 28px; display: flex; align-items: center; justify-content: space-between;
-      position: sticky; top: 0; z-index: 50;
     }
-    .brand-group { display: flex; align-items: center; gap: 12px; }
+    .brand-group { display: flex; align-items: center; gap: 12px; transition: opacity 0.3s ease, transform 0.3s ease; }
+    .brand-group.hidden { opacity: 0; transform: translateX(-20px); pointer-events: none; }
     .brand-icon {
       width: 36px; height: 36px;
       background: linear-gradient(135deg, var(--accent) 0%, #1d4ed8 100%);
       color: #fff; border-radius: var(--radius-md);
       display: flex; align-items: center; justify-content: center;
       font-size: 18px; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+      cursor: pointer; user-select: none; transition: transform 0.3s ease;
     }
+    .brand-icon.spin { transform: rotate(360deg); }
     .brand-text h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
     .brand-text p { font-size: 12px; color: var(--text-tertiary); }
-    .header-actions { display: flex; align-items: center; gap: 10px; }
-    .app-main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+    .app-main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 24px 28px 100px 28px; display: flex; flex-direction: column; gap: 20px; }
     .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-xs); transition: border-color var(--transition-fast); }
     .card:hover { border-color: var(--border-strong); }
     .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
@@ -1445,7 +1579,7 @@ Dbg-File $bannerProgramPath
     .summary-content { display: flex; flex-direction: column; gap: 2px; }
     .chevron { transition: transform 0.2s ease; font-size: 14px; color: var(--text-tertiary); }
     details.card[open] > summary .chevron { transform: rotate(180deg); }
-    .preset-grid { padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
     .preset-card { cursor: pointer; border: 2px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; transition: all var(--transition-fast); background: var(--bg-surface); }
     .preset-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-md); }
     .preset-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18); }
@@ -1468,25 +1602,36 @@ Dbg-File $bannerProgramPath
     .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
     .help-callout { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: #92400e; margin-top: 8px; line-height: 1.5; }
     .info-callout { background: var(--accent-subtle); border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: #1e40af; margin-top: 8px; line-height: 1.5; }
+    .floating-actions {
+      position: fixed; bottom: 24px; right: 24px; z-index: 2000;
+      display: flex; flex-direction: column; gap: 10px; align-items: stretch; width: 150px;
+      background: rgba(255,255,255,0.9); padding: 10px;
+      border-radius: var(--radius-md); box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+      backdrop-filter: blur(6px);
+    }
+    .floating-actions .btn { width: 100%; }
+    #rainbowEggCard {
+      display: none; border: 2px dashed var(--accent); animation: dropIn 0.5s ease;
+    }
+    @keyframes dropIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   </style>
 </head>
 <body>
-  <div id="liveBanner" class="live-appbar-strip">
-    <div id="slotLeft" class="banner-slot slot-left"></div>
-    <div id="slotCenter" class="banner-slot slot-center"></div>
-    <div id="slotRight" class="banner-slot slot-right"></div>
+  <div id="screenSimulator"></div>
+  <div id="bannerWrapper">
+    <div id="liveBanner" class="live-appbar-strip">
+      <div id="slotLeft" class="banner-slot slot-left"></div>
+      <div id="slotCenter" class="banner-slot slot-center"></div>
+      <div id="slotRight" class="banner-slot slot-right"></div>
+    </div>
   </div>
   <header class="app-header">
-    <div class="brand-group">
-      <div class="brand-icon">&#x2699;</div>
+    <div class="brand-group" id="brandGroup">
+      <div class="brand-icon" id="brandIcon">&#x2699;</div>
       <div class="brand-text">
-        <h1>NetBanner Configurator</h1>
+        <h1>NetMark Configurator</h1>
         <p>Set up your desktop classification banner in three easy steps.</p>
       </div>
-    </div>
-    <div class="header-actions">
-      <button type="button" class="btn btn-secondary btn-sm" onclick="resetToDefaults()"><span>&#x21BA;</span> Reset</button>
-      <button type="button" class="btn btn-primary btn-sm" onclick="downloadIni()"><span>&#x1F4BE;</span> Save Settings</button>
     </div>
   </header>
   <main class="app-main">
@@ -1499,7 +1644,7 @@ Dbg-File $bannerProgramPath
       </div>
       <div class="form-group">
         <div class="field-label"><span>Left side</span><span class="field-hint">Optional &mdash; usually left blank</span></div>
-        <input type="text" id="txtLeft" class="input-text input-mono" placeholder="e.g. SYSTEM: %COMPUTERNAME%" value="">
+        <input type="text" id="txtLeft" class="input-text input-mono" placeholder="e.g. SYSTEM: %COMPUTERNAME%" value="%IP_ADDRESS%">
         <div class="preset-chips">
           <button class="chip-btn" onclick="insertMacro('txtLeft', '%COMPUTERNAME%')">+ Computer name</button>
           <button class="chip-btn" onclick="insertMacro('txtLeft', '%IP_ADDRESS%')">+ IP address</button>
@@ -1507,7 +1652,7 @@ Dbg-File $bannerProgramPath
       </div>
       <div class="form-group">
         <div class="field-label"><span>Center (main message)</span><span class="field-hint">This is the big classification text</span></div>
-        <input type="text" id="txtCenter" class="input-text input-mono" value="UNCLASSIFIED // FOUO - %COMPUTERNAME%">
+        <input type="text" id="txtCenter" class="input-text input-mono" value="%COMPUTERNAME%">
         <div class="preset-chips">
           <button class="chip-btn" onclick="insertMacro('txtCenter', '%COMPUTERNAME%')">+ Computer name</button>
           <button class="chip-btn" onclick="insertMacro('txtCenter', '%USERNAME%')">+ Username</button>
@@ -1524,16 +1669,23 @@ Dbg-File $bannerProgramPath
       </div>
       <div class="help-callout"><strong>Tip:</strong> Click the small chips above to insert special values. <code>%COMPUTERNAME%</code> shows your PC name, <code>%USERNAME%</code> shows your login name, <code>%IP_ADDRESS%</code> shows your network IP.</div>
     </section>
-    <details class="card" open>
-      <summary>
-        <div class="summary-content">
+    
+    <section class="card">
+      <div class="card-header">
+        <div>
           <h2 class="card-title"><span class="step-number">2</span> USA Classification Levels</h2>
-          <p class="card-subtitle" style="margin-left: 36px;">Click to hide/show. Select a level to apply standard text and colors.</p>
+          <p class="card-subtitle">Click a level to apply standard text and colors. Showing common levels.</p>
         </div>
-        <span class="chevron">&#x25BC;</span>
-      </summary>
-      <div class="preset-grid" id="presetGrid"></div>
-    </details>
+      </div>
+      <div class="preset-grid" id="presetGridCommon"></div>
+      <div id="presetExpandWrapper" style="display: none; padding-top: 20px;">
+        <div class="preset-grid" id="presetGridAll"></div>
+      </div>
+      <div style="text-align: center; padding: 20px;">
+        <button type="button" class="btn btn-secondary btn-sm" id="expandPresetsBtn" onclick="togglePresets()">Show All Levels</button>
+      </div>
+    </section>
+
     <section class="card">
       <div class="card-header">
         <div>
@@ -1646,6 +1798,7 @@ Dbg-File $bannerProgramPath
         </div>
       </div>
       <div style="height: 1px; background: var(--border-subtle); margin: 18px 0;"></div>
+      
       <div class="form-group">
         <div class="toggle-row">
           <div>
@@ -1659,9 +1812,9 @@ Dbg-File $bannerProgramPath
         <div class="form-group">
           <div class="field-label"><span>Shadow color</span></div>
           <label class="color-picker-btn">
-            <span class="color-circle" id="tsCircle" style="background-color: #000000;"></span>
-            <span class="color-label-val" id="tsHexLabel">#000000</span>
-            <input type="color" id="pickerTextShadow" style="opacity: 0; width: 0; height: 0; position: absolute;" value="#000000" oninput="syncColor('ts', this.value)">
+            <span class="color-circle" id="tscCircle" style="background-color: #000000;"></span>
+            <span class="color-label-val" id="tscHexLabel">#000000</span>
+            <input type="color" id="pickerTextShadow" style="opacity: 0; width: 0; height: 0; position: absolute;" value="#000000" oninput="syncColor('tsc', this.value)">
           </label>
         </div>
         <div class="form-group">
@@ -1673,6 +1826,7 @@ Dbg-File $bannerProgramPath
         </div>
       </div>
     </section>
+
     <details class="card">
       <summary>
         <div class="summary-content">
@@ -1687,7 +1841,23 @@ Dbg-File $bannerProgramPath
         <div class="help-callout"><strong>Example:</strong> Create a variable called <code>IP_ADDRESS</code> with a value starting with <code>$</code> (PowerShell). Then in your banner text, type <code>%IP_ADDRESS%</code> to show it. The running banner re-evaluates these every 30 seconds and immediately when your network changes &mdash; so an IP address change shows up live within a couple of seconds.</div>
       </div>
     </details>
+
+    <section class="card" id="rainbowEggCard" style="text-align: center;">
+      <div class="toggle-row" style="display: inline-flex; padding: 12px 24px; border: none; background: transparent;">
+        <div style="margin-right: 12px;">
+          <div class="toggle-label" style="font-size: 14px;">🌈 Enable Rainbow Mode</div>
+          <div class="toggle-hint">You found the secret feature! Cycles the banner background through the rainbow.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="chkRainbowMode" onchange="updateAll()"><span class="slider-toggle"></span></label>
+      </div>
+    </section>
   </main>
+
+  <div class="floating-actions">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="resetToDefaults()"><span>&#x21BA;</span> Reset</button>
+    <button type="button" class="btn btn-primary btn-sm" onclick="downloadIni()"><span>&#x1F4BE;</span> Save Settings</button>
+  </div>
+
   <script>
     const PRESETS = [
       { name: "UNCLASSIFIED",            text: "UNCLASSIFIED",                       bg: "#007a33", fg: "#ffffff", desc: "Standard" },
@@ -1720,14 +1890,40 @@ Dbg-File $bannerProgramPath
       { name: "PROPRIETARY",             text: "CONTRACTOR PROPRIETARY - %COMPUTERNAME%", bg: "#505050", fg: "#ffffff", desc: "Proprietary" }
     ];
     const appState = {
-      textLeft: "", textCenter: "UNCLASSIFIED // FOUO - %COMPUTERNAME%", textRight: "%USERNAME%",
+      textLeft: "%IP_ADDRESS%", textCenter: "%COMPUTERNAME%", textRight: "%USERNAME%",
       bgColor: "#007a33", fgColor: "#ffffff", fontName: "Segoe UI", fontSize: 10,
       fontBold: true, fontItalic: false, fontUnderline: false, heightPx: 24,
-      textShadow: false, textShadowColor: "#000000", textShadowOffset: 2, bannerShadow: true,
+      textShadow: false, textShadowColor: "#000000", textShadowOffset: 2, 
+      bannerShadow: true,
       borderEnabled: false, borderSize: 4,
+      rainbowMode: false,
       customEnvVars: [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }]
     };
     const mockSystemEnv = { "COMPUTERNAME": "WORKSTATION-01", "USERNAME": "AdminUser", "USERDOMAIN": "CORPNET" };
+    let rainbowInterval = null;
+
+    // Easter Egg Logic
+    let gearClicks = 0;
+    let gearTimer = null;
+    document.getElementById('brandIcon').addEventListener('click', () => {
+        gearClicks++;
+        if (gearTimer) clearTimeout(gearTimer);
+        gearTimer = setTimeout(() => { gearClicks = 0; }, 3000); // 3 seconds to click 5 times
+
+        if (gearClicks >= 5) {
+            gearClicks = 0;
+            const egg = document.getElementById('rainbowEggCard');
+            const icon = document.getElementById('brandIcon');
+            icon.classList.add('spin');
+            setTimeout(() => icon.classList.remove('spin'), 500);
+            
+            if (egg.style.display === 'none' || egg.style.display === '') {
+                egg.style.display = 'block';
+                egg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    });
+
     function hexToSignedArgb(hex) {
       hex = hex.replace('#', '');
       const r = parseInt(hex.substring(0, 2), 16);
@@ -1765,6 +1961,9 @@ Dbg-File $bannerProgramPath
       appState.textShadow = document.getElementById('chkTextShadow').checked;
       appState.bannerShadow = document.getElementById('chkBannerShadow').checked;
       appState.borderEnabled = document.getElementById('chkBorderEnabled').checked;
+      
+      const chkRainbow = document.getElementById('chkRainbowMode');
+      if (chkRainbow) appState.rainbowMode = chkRainbow.checked;
 
       const tsControls = document.getElementById('textShadowControls');
       if (appState.textShadow) { tsControls.style.opacity = '1'; tsControls.style.pointerEvents = 'auto'; }
@@ -1776,27 +1975,62 @@ Dbg-File $bannerProgramPath
 
       const banner = document.getElementById('liveBanner');
       banner.style.height = `${appState.heightPx}px`;
-      banner.style.backgroundColor = appState.bgColor;
       banner.style.color = appState.fgColor;
       banner.style.fontFamily = `"${appState.fontName}", sans-serif`;
       banner.style.fontSize = `${appState.fontSize}pt`;
       banner.style.fontWeight = appState.fontBold ? '700' : '400';
       banner.style.fontStyle = appState.fontItalic ? 'italic' : 'normal';
       banner.style.textDecoration = appState.fontUnderline ? 'underline' : 'none';
-      banner.classList.toggle('with-banner-shadow', appState.bannerShadow);
-      banner.classList.toggle('with-text-shadow', appState.textShadow);
+      
+      if (appState.textShadow) {
+          const off = `${appState.textShadowOffset}px`;
+          banner.style.textShadow = `${off} ${off} 2px ${appState.textShadowColor}`;
+      } else {
+          banner.style.textShadow = 'none';
+      }
+
+      const sim = document.getElementById('screenSimulator');
+      
+      if (appState.rainbowMode) {
+          if (!rainbowInterval) {
+              rainbowInterval = setInterval(() => {
+                  const hue = (Date.now() / 20) % 360;
+                  const color = `hsl(${hue}, 100%, 50%)`;
+                  banner.style.backgroundColor = color;
+                  if (appState.borderEnabled) {
+                      sim.style.borderLeftColor = color;
+                      sim.style.borderRightColor = color;
+                      sim.style.borderBottomColor = color;
+                  }
+              }, 50);
+          }
+      } else {
+          if (rainbowInterval) {
+              clearInterval(rainbowInterval);
+              rainbowInterval = null;
+          }
+          banner.style.backgroundColor = appState.bgColor;
+      }
 
       if (appState.borderEnabled) {
-        const b = `${appState.borderSize}px solid ${appState.bgColor}`;
-        banner.style.borderLeft = b;
-        banner.style.borderRight = b;
-        banner.style.borderBottom = b;
-        banner.style.borderTop = 'none';
+          const s = `${appState.borderSize}px`;
+          const c = appState.rainbowMode ? banner.style.backgroundColor : appState.bgColor;
+          sim.style.borderLeftWidth = s;
+          sim.style.borderRightWidth = s;
+          sim.style.borderBottomWidth = s;
+          
+          if (!appState.rainbowMode) {
+              sim.style.borderLeftColor = c;
+              sim.style.borderRightColor = c;
+              sim.style.borderBottomColor = c;
+          }
       } else {
-        banner.style.borderLeft = '';
-        banner.style.borderRight = '';
-        banner.style.borderBottom = '';
+          sim.style.borderLeftWidth = '0';
+          sim.style.borderRightWidth = '0';
+          sim.style.borderBottomWidth = '0';
       }
+
+      banner.style.boxShadow = appState.bannerShadow ? '0 4px 14px rgba(0,0,0,0.45)' : 'none';
 
       document.getElementById('slotLeft').textContent = expandPreview(appState.textLeft);
       document.getElementById('slotCenter').textContent = expandPreview(appState.textCenter);
@@ -1804,13 +2038,13 @@ Dbg-File $bannerProgramPath
     }
     function syncHeight(val) { appState.heightPx = parseInt(val); document.getElementById('heightBadge').textContent = `${val} px`; updateAll(); }
     function syncBorderSize(val) { appState.borderSize = parseInt(val); document.getElementById('borderSizeBadge').textContent = `${val} px`; updateAll(); }
+    function syncTextShadowOffset(val) { appState.textShadowOffset = parseInt(val); document.getElementById('tsOffsetBadge').textContent = `${val} px`; updateAll(); }
     function syncColor(type, val) {
       if (type === 'bg') { appState.bgColor = val; document.getElementById('bgCircle').style.backgroundColor = val; document.getElementById('bgHexLabel').textContent = val.toUpperCase(); }
       else if (type === 'fg') { appState.fgColor = val; document.getElementById('fgCircle').style.backgroundColor = val; document.getElementById('fgHexLabel').textContent = val.toUpperCase(); }
-      else if (type === 'ts') { appState.textShadowColor = val; document.getElementById('tsCircle').style.backgroundColor = val; document.getElementById('tsHexLabel').textContent = val.toUpperCase(); }
+      else if (type === 'tsc') { appState.textShadowColor = val; document.getElementById('tscCircle').style.backgroundColor = val; document.getElementById('tscHexLabel').textContent = val.toUpperCase(); }
       updateAll();
     }
-    function syncTextShadowOffset(val) { appState.textShadowOffset = parseInt(val); document.getElementById('tsOffsetBadge').textContent = `${val} px`; updateAll(); }
     function applyPreset(p) {
       document.getElementById('txtCenter').value = p.text;
       document.getElementById('pickerBg').value = p.bg;
@@ -1823,16 +2057,36 @@ Dbg-File $bannerProgramPath
       if (cards[idx]) cards[idx].classList.add('active');
       updateAll();
     }
-    function renderPresetGrid() {
-      const grid = document.getElementById('presetGrid');
-      grid.innerHTML = '';
-      PRESETS.forEach(p => {
+    function createPresetCard(p) {
         const card = document.createElement('div');
         card.className = 'preset-card';
         card.onclick = () => applyPreset(p);
         card.innerHTML = `<div class="preset-preview" style="background-color: ${p.bg}; color: ${p.fg};">${p.name}</div><div class="preset-meta"><span>${p.desc}</span><span class="preset-meta-dot" style="background-color: ${p.bg};"></span></div>`;
-        grid.appendChild(card);
-      });
+        return card;
+    }
+    function renderPresetGrid() {
+      const commonGrid = document.getElementById('presetGridCommon');
+      const allGrid = document.getElementById('presetGridAll');
+      commonGrid.innerHTML = '';
+      allGrid.innerHTML = '';
+      
+      const commonNames = ["UNCLASSIFIED", "UNCLASSIFIED // FOUO", "CUI", "CONFIDENTIAL", "SECRET", "TOP SECRET"];
+      const commonPresets = PRESETS.filter(p => commonNames.includes(p.name));
+      const otherPresets = PRESETS.filter(p => !commonNames.includes(p.name));
+
+      commonPresets.forEach(p => commonGrid.appendChild(createPresetCard(p)));
+      otherPresets.forEach(p => allGrid.appendChild(createPresetCard(p)));
+    }
+    function togglePresets() {
+      const wrapper = document.getElementById('presetExpandWrapper');
+      const btn = document.getElementById('expandPresetsBtn');
+      if (wrapper.style.display === 'none') {
+        wrapper.style.display = 'block';
+        btn.innerText = "Hide Advanced Levels";
+      } else {
+        wrapper.style.display = 'none';
+        btn.innerText = "Show All Levels";
+      }
     }
     function insertMacro(targetId, macro) {
       const input = document.getElementById(targetId);
@@ -1872,6 +2126,10 @@ Dbg-File $bannerProgramPath
       ini += `BannerShadow=${appState.bannerShadow ? "True" : "False"}\r\n`;
       ini += `BorderEnabled=${appState.borderEnabled ? "True" : "False"}\r\n`;
       ini += `BorderSize=${appState.borderSize}\r\n`;
+      // Only output RainbowMode if it is enabled
+      if (appState.rainbowMode) {
+          ini += `RainbowMode=True\r\n`;
+      }
       const validVars = appState.customEnvVars.filter(v => v.key.trim() !== "");
       if (validVars.length > 0) {
         ini += `\r\n[EnvVars]\r\n`;
@@ -1883,24 +2141,25 @@ Dbg-File $bannerProgramPath
       const text = generateIniString();
       if (window.showSaveFilePicker) {
         try {
-          const handle = await window.showSaveFilePicker({ suggestedName: 'NetBanner.ini', types: [{ description: 'INI Configuration File', accept: { 'text/plain': ['.ini'] } }] });
+          const handle = await window.showSaveFilePicker({ suggestedName: 'NetMark.ini', types: [{ description: 'INI Configuration File', accept: { 'text/plain': ['.ini'] } }] });
           const writable = await handle.createWritable();
           await writable.write(text);
           await writable.close();
-          alert("Saved! The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.");
+          alert("Saved! Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.");
         } catch (err) { console.error("Save cancelled or failed:", err); }
       } else {
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'NetBanner.ini'; a.click();
+        a.href = url; a.download = 'NetMark.ini'; a.click();
         URL.revokeObjectURL(url);
+        alert("Saved! Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.");
       }
     }
     function resetToDefaults() {
       if (!confirm("Reset all settings back to defaults?")) return;
-      document.getElementById('txtLeft').value = '';
-      document.getElementById('txtCenter').value = 'UNCLASSIFIED // FOUO - %COMPUTERNAME%';
+      document.getElementById('txtLeft').value = '%IP_ADDRESS%';
+      document.getElementById('txtCenter').value = '%COMPUTERNAME%';
       document.getElementById('txtRight').value = '%USERNAME%';
       document.getElementById('sliderHeight').value = 24;
       document.getElementById('selFontFamily').value = 'Segoe UI';
@@ -1914,9 +2173,18 @@ Dbg-File $bannerProgramPath
       document.getElementById('sliderBorderSize').value = 4;
       document.getElementById('sliderTextShadowOffset').value = 2;
       document.getElementById('pickerTextShadow').value = '#000000';
+      
+      // Reset Easter Egg safely if it exists
+      const chkRainbow = document.getElementById('chkRainbowMode');
+      if (chkRainbow) {
+          chkRainbow.checked = false;
+          // Optionally hide it again
+          // document.getElementById('rainbowEggCard').style.display = 'none';
+      }
+
       syncColor('bg', '#007a33');
       syncColor('fg', '#ffffff');
-      syncColor('ts', '#000000');
+      syncColor('tsc', '#000000');
       syncHeight(24);
       syncBorderSize(4);
       syncTextShadowOffset(2);
@@ -1926,6 +2194,16 @@ Dbg-File $bannerProgramPath
       updateAll();
     }
     ['txtLeft', 'txtCenter', 'txtRight'].forEach(id => { document.getElementById(id).addEventListener('input', updateAll); });
+    
+    window.addEventListener('scroll', () => {
+        const brand = document.getElementById('brandGroup');
+        if (window.scrollY > 30) {
+            brand.classList.add('hidden');
+        } else {
+            brand.classList.remove('hidden');
+        }
+    });
+
     renderPresetGrid();
     renderEnvTable();
     updateAll();
@@ -1936,12 +2214,12 @@ Dbg-File $bannerProgramPath
 Set-Content -LiteralPath $htmlPath -Value $htmlContent -Encoding UTF8
 Dbg-File $htmlPath
 
-# ---- NetBanner\NetBanner.default.ini --------------------------------------
- $defaultIniPath = Join-Path $bannerDir 'NetBanner.default.ini'
+# ---- NetMark\NetMark.default.ini (Removed RainbowMode) ----------------
+ $defaultIniPath = Join-Path $bannerDir 'NetMark.default.ini'
  $defaultIniContent = @'
 [Settings]
-TextLeft=
-TextCenter=UNCLASSIFIED // FOUO - %COMPUTERNAME%
+TextLeft=%IP_ADDRESS%
+TextCenter=%COMPUTERNAME%
 TextRight=%USERNAME%
 BgColor=-16745933
 FgColor=-1
@@ -1974,7 +2252,7 @@ if (-not $dotnet) {
     throw "dotnet SDK required."
 }
 
- $bannerCsproj = Join-Path $bannerDir 'NetBanner.csproj'
+ $bannerCsproj = Join-Path $bannerDir 'NetMark.csproj'
 
  $origEAP = $ErrorActionPreference
  $ErrorActionPreference = 'Continue'
@@ -1991,14 +2269,14 @@ Dbg-Info "(This produces a self-contained single-file EXE — may take 30-60s an
  $publishExitCode = $LASTEXITCODE
  $ErrorActionPreference = $origEAP
 
-if ($publishExitCode -ne 0) { throw "publish failed for NetBanner" }
+if ($publishExitCode -ne 0) { throw "publish failed for NetMark" }
 
 Get-ChildItem -Path $publishDir -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 Get-ChildItem -Path $publishDir -Filter "*.xml" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 Dbg-Ok "Publish succeeded."
 
- $exePath = Join-Path $publishDir 'NetBanner.exe'
+ $exePath = Join-Path $publishDir 'NetMark.exe'
 if (-not (Test-Path -LiteralPath $exePath)) { throw "exe missing at $exePath" }
 
  $exeSizeMB = [math]::Round((Get-Item $exePath).Length / 1MB, 1)
@@ -2009,36 +2287,36 @@ Dbg-Ok "Portable single-file EXE: $exePath ($exeSizeMB MB)"
 # ---------------------------------------------------------------------------
 Dbg-Step "Phase 5: Run"
 
-Dbg-Info "Killing any existing NetBanner processes..."
-Get-Process -Name "NetBanner" -ErrorAction SilentlyContinue | Stop-Process -Force
+Dbg-Info "Killing any existing NetMark processes..."
+Get-Process -Name "NetMark" -ErrorAction SilentlyContinue | Stop-Process -Force
 
-Remove-Item -Path (Join-Path $publishDir 'NetBanner.ini')          -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $publishDir 'NetMark.ini')          -ErrorAction SilentlyContinue
 Remove-Item -Path (Join-Path $publishDir 'Configurator.html')      -ErrorAction SilentlyContinue
-Remove-Item -Path "C:\NetBanner-startup.log"                       -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\NetMark-startup.log"                       -ErrorAction SilentlyContinue
 
-Dbg-Info "Launching NetBanner (single-file portable exe)..."
+Dbg-Info "Launching NetMark (single-file portable exe)..."
 Start-Process -FilePath $exePath
 
 Start-Sleep -Seconds 3
- $running = Get-Process -Name "NetBanner" -ErrorAction SilentlyContinue
+ $running = Get-Process -Name "NetMark" -ErrorAction SilentlyContinue
 if (-not $running) {
-    Dbg-Warn "NetBanner process is not running. Check C:\NetBanner-startup.log for details."
-    $logFile = "C:\NetBanner-startup.log"
+    Dbg-Warn "NetMark process is not running. Check C:\NetMark-startup.log for details."
+    $logFile = "C:\NetMark-startup.log"
     if (Test-Path $logFile) {
         Write-Host "`n--- Crash Log ---" -ForegroundColor Red
         Get-Content $logFile -Tail 30
         Write-Host "-----------------`n" -ForegroundColor Red
     }
 } else {
-    Dbg-Ok "NetBanner has been started successfully."
+    Dbg-Ok "NetMark has been started successfully."
 }
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetBanner (v9) is running in background."                              -ForegroundColor White
+Write-Host " NetMark (v16) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
-Write-Host " Save the NetBanner.ini to this folder:"                               -ForegroundColor White
+Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
 Write-Host "   $publishDir"                                                        -ForegroundColor Yellow
 Write-Host " The banner updates instantly when you click Save."                   -ForegroundColor White
 Write-Host ""
