@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v24 - Full-width borders/banners & 15px default margins.
+    v26 - Fixed cascading workarea shrink on resolution change.
 #>
 
 [CmdletBinding()]
@@ -421,7 +421,7 @@ namespace NetMark
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs (UPDATED: Full Width AppBar) ---------
+# ---- Shared\BannerWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix) -------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -441,9 +441,10 @@ namespace NetMark
         private int _hue = 0;
         private System.Windows.Forms.Timer _rainbowTimer;
 
+        [System.Diagnostics.Conditional("DEBUG")]
         private void Log(string msg)
         {
-            try { System.IO.File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: [Banner] {msg}\n"); } catch { }
+            System.Diagnostics.Debug.WriteLine($"[Banner] {msg}");
         }
 
         public BannerWindow(IntPtr hMonitor, BannerSettings settings)
@@ -567,11 +568,10 @@ namespace NetMark
                         break;
                     case NativeMethods.WM_DPICHANGED:
                     case NativeMethods.WM_DISPLAYCHANGE:
-                        Log("Display change detected. Re-registering AppBar.");
-                        UnregisterAppBar();
                         UpdateMonitorInfo();
-                        if (this.IsHandleCreated) RegisterAppBar();
-                        break;
+                        ReassertAppBar();
+                        this.Invalidate();
+                        return;
                 }
                 base.WndProc(ref m);
             }
@@ -583,7 +583,9 @@ namespace NetMark
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            var rc = _currentMonitorInfo.rcWork;
+            // >>> CHANGED: Use rcMonitor instead of rcWork. 
+            // Using rcWork causes the AppBar to cascade and subtract its height repeatedly on each resolution change.
+            var rc = _currentMonitorInfo.rcMonitor;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
             return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Right, Bottom = rc.Top + h };
         }
@@ -765,7 +767,7 @@ namespace NetMark
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs (UPDATED: Full Width Bottom Border) --------------
+# ---- Shared\BorderWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix) ------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -786,9 +788,10 @@ namespace NetMark
         private int _hue = 0;
         private System.Windows.Forms.Timer _rainbowTimer;
 
+        [System.Diagnostics.Conditional("DEBUG")]
         private void Log(string msg)
         {
-            try { System.IO.File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: [Border:{_edge}] {msg}\n"); } catch { }
+            System.Diagnostics.Debug.WriteLine($"[Border:{_edge}] {msg}");
         }
 
         public BannerSettings CurrentSettings => _settings;
@@ -900,11 +903,10 @@ namespace NetMark
                         break;
                     case NativeMethods.WM_DPICHANGED:
                     case NativeMethods.WM_DISPLAYCHANGE:
-                        Log("Display change detected. Re-registering AppBar.");
-                        UnregisterAppBar();
                         UpdateMonitorInfo();
-                        if (this.IsHandleCreated) RegisterAppBar();
-                        break;
+                        ReassertAppBar();
+                        this.Invalidate();
+                        return;
                 }
                 base.WndProc(ref m);
             }
@@ -917,7 +919,9 @@ namespace NetMark
         private NativeMethods.RECT ComputeAppBarRect()
         {
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
-            var rc = _currentMonitorInfo.rcWork;
+            // >>> CHANGED: Use rcMonitor instead of rcWork. 
+            // Prevents the AppBar borders from creeping inward on every resolution change.
+            var rc = _currentMonitorInfo.rcMonitor;
 
             switch (_edge)
             {
@@ -928,7 +932,7 @@ namespace NetMark
                 case NativeMethods.ABE_BOTTOM:
                     // CRITICAL FIX: Extend the bottom border to the absolute monitor bounds 
                     // to cover the transparent corners left by the left/right borders.
-                    return new NativeMethods.RECT { Left = _currentMonitorInfo.rcMonitor.Left, Top = rc.Bottom - size, Right = _currentMonitorInfo.rcMonitor.Right, Bottom = rc.Bottom };
+                    return new NativeMethods.RECT { Left = rc.Left, Top = rc.Bottom - size, Right = rc.Right, Bottom = rc.Bottom };
                 default:
                     return new NativeMethods.RECT();
             }
@@ -993,8 +997,8 @@ namespace NetMark
                 }
                 else if (_edge == NativeMethods.ABE_LEFT || _edge == NativeMethods.ABE_RIGHT)
                 {
-                    abd.rc.Top = _currentMonitorInfo.rcWork.Top;
-                    abd.rc.Bottom = _currentMonitorInfo.rcWork.Bottom;
+                    abd.rc.Top = _currentMonitorInfo.rcMonitor.Top;
+                    abd.rc.Bottom = _currentMonitorInfo.rcMonitor.Bottom;
                 }
 
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
@@ -1120,7 +1124,7 @@ Dbg-File $bannerCsprojPath
 Set-Content -LiteralPath $bannerManifestPath -Value $bannerManifestContent -Encoding UTF8
 Dbg-File $bannerManifestPath
 
-# ---- NetMark\Program.cs -------------------------------------------------
+# ---- NetMark\Program.cs  (CHANGED: hook range, Log, RefreshMonitorsAndWindows) ----
  $bannerProgramPath = Join-Path $bannerDir 'Program.cs'
  $bannerProgramContent = @'
 using System;
@@ -1144,21 +1148,22 @@ namespace NetMark
         private static System.Threading.Timer _watchdog;
         private static System.Threading.Timer _envVarRefreshTimer;
         private static System.Threading.Timer _envVarDebounce;
+        private static System.Threading.Timer _monitorCheckTimer;
         private static IntPtr _winEventHook;
         private static NativeMethods.WinEventDelegate _winEventProc;
         private static FileSystemWatcher _iniWatcher;
         private static Mutex _mutex;
 
+        [System.Diagnostics.Conditional("DEBUG")]
         private static void Log(string msg)
         {
-            try { File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: {msg}\n"); } catch { }
+            System.Diagnostics.Debug.WriteLine($"[NetMark] {msg}");
         }
 
         [STAThread]
         private static int Main(string[] args)
         {
-            Log("=========================================================");
-            Log("NetMark starting (v24 - Full-width borders & margins fix)...");
+            Log("NetMark starting (v26 - Cascading resolution fix)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
@@ -1255,7 +1260,7 @@ namespace NetMark
 
                 _winEventProc = new NativeMethods.WinEventDelegate(OnWinEvent);
                 _winEventHook = NativeMethods.SetWinEventHook(
-                    NativeMethods.EVENT_SYSTEM_FOREGROUND, NativeMethods.EVENT_OBJECT_LOCATIONCHANGE,
+                    NativeMethods.EVENT_SYSTEM_FOREGROUND, NativeMethods.EVENT_SYSTEM_FOREGROUND,
                     IntPtr.Zero, _winEventProc, 0, 0,
                     NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
 
@@ -1275,6 +1280,28 @@ namespace NetMark
                     }
                     catch { }
                 }, null, 250, 250);
+
+                _monitorCheckTimer = new System.Threading.Timer(_ =>
+                {
+                    try
+                    {
+                        var currentMonitors = new List<IntPtr>();
+                        NativeMethods.MonitorEnumProc monCallback = (IntPtr hMon, IntPtr hdc, ref NativeMethods.RECT rc, IntPtr data) =>
+                        {
+                            currentMonitors.Add(hMon);
+                            return true;
+                        };
+                        NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, monCallback, IntPtr.Zero);
+
+                        if (currentMonitors.Count != _monitors.Count
+                            && _windows.Count > 0
+                            && _windows[0].IsHandleCreated)
+                        {
+                            _windows[0].BeginInvoke((Action)(() => RefreshMonitorsAndWindows()));
+                        }
+                    }
+                    catch { }
+                }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
 
                 try
                 {
@@ -1301,6 +1328,32 @@ namespace NetMark
             }
 
             return 0;
+        }
+
+        public static void RefreshMonitorsAndWindows()
+        {
+            _monitors.Clear();
+            NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, 
+                (IntPtr hMon, IntPtr hdc, ref NativeMethods.RECT rc, IntPtr data) =>
+                {
+                    _monitors.Add(hMon);
+                    return true;
+                }, IntPtr.Zero);
+
+            var settings = BannerSettings.Load() ?? new BannerSettings();
+
+            foreach (var w in _windows) w.Dispose();
+            _windows.Clear();
+            foreach (var w in _borderWindows) w.Dispose();
+            _borderWindows.Clear();
+
+            foreach (var hMon in _monitors)
+            {
+                var w = new BannerWindow(hMon, settings);
+                w.Show();
+                _windows.Add(w);
+            }
+            ApplyBorderSettings(settings);
         }
 
         private static void ApplyBorderSettings(BannerSettings settings)
@@ -1461,6 +1514,7 @@ namespace NetMark
                 _watchdog?.Dispose();
                 _envVarRefreshTimer?.Dispose();
                 _envVarDebounce?.Dispose();
+                _monitorCheckTimer?.Dispose();
                 _iniWatcher?.Dispose();
                 foreach (var w in _borderWindows) w.Dispose();
                 _borderWindows.Clear();
@@ -2404,7 +2458,9 @@ Start-Process -FilePath $exePath
 Start-Sleep -Seconds 3
  $running = Get-Process -Name "NetMark" -ErrorAction SilentlyContinue
 if (-not $running) {
-    Dbg-Warn "NetMark process is not running. Check C:\NetMark-startup.log for details."
+    Dbg-Warn "NetMark process is not running."
+    Dbg-Warn "Note: v26 uses [Conditional('DEBUG')] logging — C:\NetMark-startup.log"
+    Dbg-Warn "will NOT exist in Release builds. Check the on-screen MessageBox for errors."
     $logFile = "C:\NetMark-startup.log"
     if (Test-Path $logFile) {
         Write-Host "`n--- Crash Log ---" -ForegroundColor Red
@@ -2417,7 +2473,7 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetMark (v24) is running in background."                             -ForegroundColor White
+Write-Host " NetMark (v26) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
