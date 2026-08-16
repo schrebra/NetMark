@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v32 - Fixed RDP debounce timer bug & native process name query.
+    v35 - Updated default configuration values (BannerShadow=False, BorderEnabled=True, etc).
 #>
 
 [CmdletBinding()]
@@ -191,7 +191,6 @@ namespace NetMark
 
         public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
-        // >>> CHANGED: High-speed Native Process Name Query to avoid exceptions and jitter
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
 
@@ -241,6 +240,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text;
 
 namespace NetMark
@@ -260,24 +262,99 @@ namespace NetMark
         public int     HeightPx   = 24;
 
         public bool    TextShadow       = false;
-        public Color   TextShadowColor  = Color.FromArgb(64, 64, 64); // Dark Grey
+        public Color   TextShadowColor  = Color.FromArgb(64, 64, 64);
         public int     TextShadowOffset = 2;
 
         public bool    BannerShadow     = true;
         public bool    BorderEnabled    = false;
         public int     BorderSize       = 4;
 
-        public int     MarginLeft       = 15;
-        public int     MarginRight      = 15;
+        public int     MarginLeft       = 25;
+        public int     MarginRight      = 25;
 
-        public bool    RainbowMode      = false; 
+        // RAINBOW MODE REMOVED:
+        // public bool    RainbowMode      = false;
 
         public Dictionary<string, string> CustomEnvVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         
         private Dictionary<string, string> _expandedVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly object _varLock = new object();
 
+        // --- Native IP address cache (replaces PowerShell subprocess) ---
+        private static string _cachedIpAddress;
+        private static DateTime _cachedIpTimestamp;
+        private static readonly object _ipLock = new object();
+
         public static string GetIniPath() => Path.Combine(AppContext.BaseDirectory, "NetMark.ini");
+
+        /// <summary>
+        /// Retrieves the primary IPv4 address natively via System.Net.NetworkInformation.
+        /// Replaces the former powershell.exe subprocess approach that caused CPU spikes
+        /// and process-creation traces in system event logs every 30 seconds.
+        /// Results are cached for 5 seconds; call InvalidateIpCache() to force refresh.
+        /// </summary>
+        public static string GetNativeIpAddress()
+        {
+            lock (_ipLock)
+            {
+                if (_cachedIpAddress != null && (DateTime.UtcNow - _cachedIpTimestamp).TotalSeconds < 5)
+                    return _cachedIpAddress;
+            }
+
+            string result = "";
+            try
+            {
+                var candidates = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up
+                              && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                              && ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel
+                              && ni.NetworkInterfaceType != NetworkInterfaceType.Unknown);
+
+                foreach (var ni in candidates)
+                {
+                    string name = ni.Name ?? "";
+                    if (name.IndexOf("vEthernet", StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("VMware",    StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("Virtual",   StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("QEMU",      StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("Loopback",  StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+
+                    var ipProps = ni.GetIPProperties();
+                    foreach (var addr in ipProps.UnicastAddresses)
+                    {
+                        if (addr.Address.AddressFamily != AddressFamily.InterNetwork)
+                            continue;
+                        string ip = addr.Address.ToString();
+                        if (ip.StartsWith("127.") || ip.StartsWith("169.254."))
+                            continue;
+                        result = ip;
+                        break;
+                    }
+                    if (!string.IsNullOrEmpty(result)) break;
+                }
+            }
+            catch { }
+
+            lock (_ipLock)
+            {
+                _cachedIpAddress = result;
+                _cachedIpTimestamp = DateTime.UtcNow;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Forces the next GetNativeIpAddress() call to query live network state
+        /// instead of returning the cached value. Called on network-change events.
+        /// </summary>
+        public static void InvalidateIpCache()
+        {
+            lock (_ipLock)
+            {
+                _cachedIpAddress = null;
+            }
+        }
 
         public static BannerSettings Load()
         {
@@ -339,7 +416,8 @@ namespace NetMark
                         case "BorderSize":        try { s.BorderSize = int.Parse(val); } catch { } break;
                         case "MarginLeft":        try { s.MarginLeft = int.Parse(val); } catch { } break;
                         case "MarginRight":       try { s.MarginRight = int.Parse(val); } catch { } break;
-                        case "RainbowMode":       try { s.RainbowMode = bool.Parse(val); } catch { } break;
+                        // RAINBOW MODE REMOVED:
+                        // case "RainbowMode":       try { s.RainbowMode = bool.Parse(val); } catch { } break;
                     }
                 }
             }
@@ -375,10 +453,11 @@ namespace NetMark
             sb.AppendLine($"MarginLeft={MarginLeft}");
             sb.AppendLine($"MarginRight={MarginRight}");
             
-            if (RainbowMode)
-            {
-                sb.AppendLine($"RainbowMode={RainbowMode}");
-            }
+            // RAINBOW MODE REMOVED:
+            // if (RainbowMode)
+            // {
+            //     sb.AppendLine($"RainbowMode={RainbowMode}");
+            // }
             
             if (CustomEnvVars != null && CustomEnvVars.Count > 0)
             {
@@ -402,15 +481,25 @@ namespace NetMark
                 foreach (var kvp in CustomEnvVars)
                 {
                     if (string.IsNullOrEmpty(kvp.Key)) continue;
-                    if (IsPowerShellExpression(kvp.Value))
-                    {
-                        string result = EvaluatePowerShell(kvp.Value);
-                        expanded[kvp.Key] = result ?? "";
-                    }
-                    else
-                    {
-                        expanded[kvp.Key] = kvp.Value ?? "";
-                    }
+                    
+                    // POWERSHELL EVALUATION REMOVED:
+                    // Previously, values starting with '$' were sent to a hidden powershell.exe
+                    // subprocess via Base64-encoded -EncodedCommand every 30 seconds and on
+                    // every network adapter event. This caused unnecessary CPU spikes and
+                    // aggressive process creation traces in system event logs.
+                    // IP_ADDRESS is now resolved natively in ExpandText() via GetNativeIpAddress().
+                    //
+                    // if (IsPowerShellExpression(kvp.Value))
+                    // {
+                    //     string result = EvaluatePowerShell(kvp.Value);
+                    //     expanded[kvp.Key] = result ?? "";
+                    // }
+                    // else
+                    // {
+                    //     expanded[kvp.Key] = kvp.Value ?? "";
+                    // }
+                    
+                    expanded[kvp.Key] = kvp.Value ?? "";
                 }
             }
             lock (_varLock) { _expandedVars = expanded; }
@@ -420,6 +509,11 @@ namespace NetMark
         {
             if (string.IsNullOrEmpty(text)) return text ?? "";
             string result = text;
+            
+            // Native IP address resolution — replaces the former PowerShell subprocess.
+            // %IP_ADDRESS% is now a built-in variable resolved via System.Net.NetworkInformation.
+            result = result.Replace("%IP_ADDRESS%", GetNativeIpAddress(), StringComparison.OrdinalIgnoreCase);
+            
             lock (_varLock)
             {
                 if (_expandedVars != null)
@@ -435,38 +529,39 @@ namespace NetMark
             return result ?? "";
         }
 
-        private static bool IsPowerShellExpression(string value)
-        {
-            if (string.IsNullOrEmpty(value)) return false;
-            return value.TrimStart().StartsWith("$");
-        }
-
-        private static string EvaluatePowerShell(string script)
-        {
-            try
-            {
-                string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                using (var p = Process.Start(psi))
-                {
-                    if (p == null) return "";
-                    string output = p.StandardOutput.ReadToEnd().Trim();
-                    p.WaitForExit(15000);
-                    if (!p.HasExited) try { p.Kill(); } catch { }
-                    var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                    return lines.Length > 0 ? lines[0].Trim() : output;
-                }
-            }
-            catch { return ""; }
-        }
+        // POWERSHELL EVALUATION REMOVED:
+        // private static bool IsPowerShellExpression(string value)
+        // {
+        //     if (string.IsNullOrEmpty(value)) return false;
+        //     return value.TrimStart().StartsWith("$");
+        // }
+        //
+        // private static string EvaluatePowerShell(string script)
+        // {
+        //     try
+        //     {
+        //         string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+        //         var psi = new ProcessStartInfo
+        //         {
+        //             FileName = "powershell.exe",
+        //             Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+        //             UseShellExecute = false,
+        //             RedirectStandardOutput = true,
+        //             RedirectStandardError = true,
+        //             CreateNoWindow = true
+        //         };
+        //         using (var p = Process.Start(psi))
+        //         {
+        //             if (p == null) return "";
+        //             string output = p.StandardOutput.ReadToEnd().Trim();
+        //             p.WaitForExit(15000);
+        //             if (!p.HasExited) try { p.Kill(); } catch { }
+        //             var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        //             return lines.Length > 0 ? lines[0].Trim() : output;
+        //         }
+        //     }
+        //     catch { return ""; }
+        // }
     }
 }
 '@
@@ -490,8 +585,10 @@ namespace NetMark
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
-        private int _hue = 0;
-        private System.Windows.Forms.Timer _rainbowTimer;
+
+        // RAINBOW MODE REMOVED:
+        // private int _hue = 0;
+        // private System.Windows.Forms.Timer _rainbowTimer;
 
         [System.Diagnostics.Conditional("DEBUG")]
         private void Log(string msg)
@@ -515,7 +612,8 @@ namespace NetMark
             this.Bounds = ComputeVisibleWindowRect();
             Log("BannerWindow created for monitor: " + _hMonitor);
             
-            if (_settings.RainbowMode) StartRainbowTimer();
+            // RAINBOW MODE REMOVED:
+            // if (_settings.RainbowMode) StartRainbowTimer();
         }
 
         private void UpdateMonitorInfo()
@@ -544,32 +642,34 @@ namespace NetMark
                 ReassertAppBar();
             }
 
-            if (_settings.RainbowMode) StartRainbowTimer();
-            else StopRainbowTimer();
+            // RAINBOW MODE REMOVED:
+            // if (_settings.RainbowMode) StartRainbowTimer();
+            // else StopRainbowTimer();
 
             this.Invalidate();
         }
 
-        private void StartRainbowTimer()
-        {
-            if (_rainbowTimer == null)
-            {
-                _rainbowTimer = new System.Windows.Forms.Timer();
-                _rainbowTimer.Interval = 150; 
-                _rainbowTimer.Tick += (s, e) => 
-                {
-                    _hue = (_hue + 2) % 360;
-                    this.Invalidate();
-                    this.Update(); 
-                };
-            }
-            if (!_rainbowTimer.Enabled) _rainbowTimer.Start();
-        }
-
-        private void StopRainbowTimer()
-        {
-            _rainbowTimer?.Stop();
-        }
+        // RAINBOW MODE REMOVED:
+        // private void StartRainbowTimer()
+        // {
+        //     if (_rainbowTimer == null)
+        //     {
+        //         _rainbowTimer = new System.Windows.Forms.Timer();
+        //         _rainbowTimer.Interval = 150; 
+        //         _rainbowTimer.Tick += (s, e) => 
+        //         {
+        //             _hue = (_hue + 2) % 360;
+        //             this.Invalidate();
+        //             this.Update(); 
+        //         };
+        //     }
+        //     if (!_rainbowTimer.Enabled) _rainbowTimer.Start();
+        // }
+        //
+        // private void StopRainbowTimer()
+        // {
+        //     _rainbowTimer?.Stop();
+        // }
 
         protected override CreateParams CreateParams
         {
@@ -635,9 +735,12 @@ namespace NetMark
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            var rc = _currentMonitorInfo.rcMonitor;
+            var rcMon = _currentMonitorInfo.rcMonitor;
+            var rcWork = _currentMonitorInfo.rcWork;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
-            return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Right, Bottom = rc.Top + h };
+            // Use rcWork.Top to ensure placement below any existing top taskbar if AppBar fails.
+            // Use rcMon.Left/Right to span the full width.
+            return new NativeMethods.RECT { Left = rcMon.Left, Top = rcWork.Top, Right = rcMon.Right, Bottom = rcWork.Top + h };
         }
 
         private Rectangle ComputeVisibleWindowRect()
@@ -730,10 +833,11 @@ namespace NetMark
                 if (_settings == null) _settings = new BannerSettings();
                 
                 Color bg = _settings.BgColor;
-                if (_settings.RainbowMode)
-                {
-                    bg = ColorFromHSV(_hue, 1.0, 0.85);
-                }
+                // RAINBOW MODE REMOVED:
+                // if (_settings.RainbowMode)
+                // {
+                //     bg = ColorFromHSV(_hue, 1.0, 0.85);
+                // }
                 e.Graphics.Clear(bg);
 
                 string fontName = string.IsNullOrWhiteSpace(_settings.FontName) ? "Segoe UI" : _settings.FontName;
@@ -788,22 +892,23 @@ namespace NetMark
             base.OnPaint(e);
         }
 
-        private static Color ColorFromHSV(double hue, double saturation, double value)
-        {
-            int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
-            double f = hue / 60 - Math.Floor(hue / 60);
-            value = value * 255;
-            int v = Convert.ToInt32(value);
-            int p = Convert.ToInt32(value * (1 - saturation));
-            int q = Convert.ToInt32(value * (1 - f * saturation));
-            int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
-            if (hi == 0) return Color.FromArgb(255, v, t, p);
-            else if (hi == 1) return Color.FromArgb(255, q, v, p);
-            else if (hi == 2) return Color.FromArgb(255, p, v, t);
-            else if (hi == 3) return Color.FromArgb(255, p, q, v);
-            else if (hi == 4) return Color.FromArgb(255, t, p, v);
-            else return Color.FromArgb(255, v, p, q);
-        }
+        // RAINBOW MODE REMOVED:
+        // private static Color ColorFromHSV(double hue, double saturation, double value)
+        // {
+        //     int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
+        //     double f = hue / 60 - Math.Floor(hue / 60);
+        //     value = value * 255;
+        //     int v = Convert.ToInt32(value);
+        //     int p = Convert.ToInt32(value * (1 - saturation));
+        //     int q = Convert.ToInt32(value * (1 - f * saturation));
+        //     int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
+        //     if (hi == 0) return Color.FromArgb(255, v, t, p);
+        //     else if (hi == 1) return Color.FromArgb(255, q, v, p);
+        //     else if (hi == 2) return Color.FromArgb(255, p, v, t);
+        //     else if (hi == 3) return Color.FromArgb(255, p, q, v);
+        //     else if (hi == 4) return Color.FromArgb(255, t, p, v);
+        //     else return Color.FromArgb(255, v, p, q);
+        // }
 
         private void UnregisterAppBar()
         {
@@ -825,7 +930,8 @@ namespace NetMark
         {
             if (disposing) 
             {
-                StopRainbowTimer();
+                // RAINBOW MODE REMOVED:
+                // StopRainbowTimer();
                 UnregisterAppBar();
             }
             base.Dispose(disposing);
@@ -854,8 +960,10 @@ namespace NetMark
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
-        private int _hue = 0;
-        private System.Windows.Forms.Timer _rainbowTimer;
+
+        // RAINBOW MODE REMOVED:
+        // private int _hue = 0;
+        // private System.Windows.Forms.Timer _rainbowTimer;
 
         [System.Diagnostics.Conditional("DEBUG")]
         private void Log(string msg)
@@ -882,7 +990,8 @@ namespace NetMark
             this.Bounds = ComputeVisibleWindowRect();
             Log($"BorderWindow created edge={edge} monitor={hMonitor}");
 
-            if (_settings.RainbowMode) StartRainbowTimer();
+            // RAINBOW MODE REMOVED:
+            // if (_settings.RainbowMode) StartRainbowTimer();
         }
 
         private void UpdateMonitorInfo()
@@ -897,32 +1006,34 @@ namespace NetMark
             _settings = newSettings;
             ReassertAppBar();
 
-            if (_settings.RainbowMode) StartRainbowTimer();
-            else StopRainbowTimer();
+            // RAINBOW MODE REMOVED:
+            // if (_settings.RainbowMode) StartRainbowTimer();
+            // else StopRainbowTimer();
 
             this.Invalidate();
         }
 
-        private void StartRainbowTimer()
-        {
-            if (_rainbowTimer == null)
-            {
-                _rainbowTimer = new System.Windows.Forms.Timer();
-                _rainbowTimer.Interval = 150; 
-                _rainbowTimer.Tick += (s, e) => 
-                {
-                    _hue = (_hue + 2) % 360;
-                    this.Invalidate();
-                    this.Update(); 
-                };
-            }
-            if (!_rainbowTimer.Enabled) _rainbowTimer.Start();
-        }
-
-        private void StopRainbowTimer()
-        {
-            _rainbowTimer?.Stop();
-        }
+        // RAINBOW MODE REMOVED:
+        // private void StartRainbowTimer()
+        // {
+        //     if (_rainbowTimer == null)
+        //     {
+        //         _rainbowTimer = new System.Windows.Forms.Timer();
+        //         _rainbowTimer.Interval = 150; 
+        //         _rainbowTimer.Tick += (s, e) => 
+        //         {
+        //             _hue = (_hue + 2) % 360;
+        //             this.Invalidate();
+        //             this.Update(); 
+        //         };
+        //     }
+        //     if (!_rainbowTimer.Enabled) _rainbowTimer.Start();
+        // }
+        //
+        // private void StopRainbowTimer()
+        // {
+        //     _rainbowTimer?.Stop();
+        // }
 
         protected override CreateParams CreateParams
         {
@@ -988,16 +1099,20 @@ namespace NetMark
         private NativeMethods.RECT ComputeAppBarRect()
         {
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
-            var rc = _currentMonitorInfo.rcMonitor;
+            var rcMon = _currentMonitorInfo.rcMonitor;
+            var rcWork = _currentMonitorInfo.rcWork;
 
             switch (_edge)
             {
                 case NativeMethods.ABE_LEFT:
-                    return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Left + size, Bottom = rc.Bottom };
+                    // Use rcWork.Left to avoid being placed under a left taskbar.
+                    return new NativeMethods.RECT { Left = rcWork.Left, Top = rcMon.Top, Right = rcWork.Left + size, Bottom = rcMon.Bottom };
                 case NativeMethods.ABE_RIGHT:
-                    return new NativeMethods.RECT { Left = rc.Right - size, Top = rc.Top, Right = rc.Right, Bottom = rc.Bottom };
+                    // Use rcWork.Right to avoid being placed under a right taskbar.
+                    return new NativeMethods.RECT { Left = rcWork.Right - size, Top = rcMon.Top, Right = rcWork.Right, Bottom = rcMon.Bottom };
                 case NativeMethods.ABE_BOTTOM:
-                    return new NativeMethods.RECT { Left = rc.Left, Top = rc.Bottom - size, Right = rc.Right, Bottom = rc.Bottom };
+                    // Use rcWork.Bottom to avoid being placed under a bottom taskbar.
+                    return new NativeMethods.RECT { Left = rcMon.Left, Top = rcWork.Bottom - size, Right = rcMon.Right, Bottom = rcWork.Bottom };
                 default:
                     return new NativeMethods.RECT();
             }
@@ -1100,32 +1215,34 @@ namespace NetMark
                 if (_settings == null) _settings = new BannerSettings();
                 
                 Color bg = _settings.BgColor;
-                if (_settings.RainbowMode)
-                {
-                    bg = ColorFromHSV(_hue, 1.0, 0.85);
-                }
+                // RAINBOW MODE REMOVED:
+                // if (_settings.RainbowMode)
+                // {
+                //     bg = ColorFromHSV(_hue, 1.0, 0.85);
+                // }
                 e.Graphics.Clear(bg);
             }
             catch (Exception ex) { Log("OnPaint failed: " + ex.Message); }
             base.OnPaint(e);
         }
 
-        private static Color ColorFromHSV(double hue, double saturation, double value)
-        {
-            int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
-            double f = hue / 60 - Math.Floor(hue / 60);
-            value = value * 255;
-            int v = Convert.ToInt32(value);
-            int p = Convert.ToInt32(value * (1 - saturation));
-            int q = Convert.ToInt32(value * (1 - f * saturation));
-            int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
-            if (hi == 0) return Color.FromArgb(255, v, t, p);
-            else if (hi == 1) return Color.FromArgb(255, q, v, p);
-            else if (hi == 2) return Color.FromArgb(255, p, v, t);
-            else if (hi == 3) return Color.FromArgb(255, p, q, v);
-            else if (hi == 4) return Color.FromArgb(255, t, p, v);
-            else return Color.FromArgb(255, v, p, q);
-        }
+        // RAINBOW MODE REMOVED:
+        // private static Color ColorFromHSV(double hue, double saturation, double value)
+        // {
+        //     int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
+        //     double f = hue / 60 - Math.Floor(hue / 60);
+        //     value = value * 255;
+        //     int v = Convert.ToInt32(value);
+        //     int p = Convert.ToInt32(value * (1 - saturation));
+        //     int q = Convert.ToInt32(value * (1 - f * saturation));
+        //     int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
+        //     if (hi == 0) return Color.FromArgb(255, v, t, p);
+        //     else if (hi == 1) return Color.FromArgb(255, q, v, p);
+        //     else if (hi == 2) return Color.FromArgb(255, p, v, t);
+        //     else if (hi == 3) return Color.FromArgb(255, p, q, v);
+        //     else if (hi == 4) return Color.FromArgb(255, t, p, v);
+        //     else return Color.FromArgb(255, v, p, q);
+        // }
 
         private void UnregisterAppBar()
         {
@@ -1147,7 +1264,8 @@ namespace NetMark
         {
             if (disposing) 
             {
-                StopRainbowTimer();
+                // RAINBOW MODE REMOVED:
+                // StopRainbowTimer();
                 UnregisterAppBar();
             }
             base.Dispose(disposing);
@@ -1257,7 +1375,7 @@ namespace NetMark
         [STAThread]
         private static int Main(string[] args)
         {
-            Log("NetMark starting (v32 - Fixed RDP Fullscreen debounce)...");
+            Log("NetMark starting (v35 - Default Settings Updated)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
@@ -1347,7 +1465,10 @@ namespace NetMark
 
                 Log("Setting up RDP session listener...");
                 _sessionListener = new MessageWindow();
-                _sessionListener.CreateControl(); 
+                
+                // Force handle creation so WTSRegisterSessionNotification is called in OnHandleCreated.
+                // The Handle property accessor safely invokes CreateHandle() on the UI thread.
+                var dummyHandle = _sessionListener.Handle; 
                 
                 SetRdpServerState(hide: NativeMethods.IsRemoteSession());
 
@@ -1603,7 +1724,6 @@ namespace NetMark
             }));
         }
 
-        // >>> CHANGED: High-speed native process name query
         private static string GetProcessNameFromHwnd(IntPtr hwnd)
         {
             uint pid;
@@ -1639,7 +1759,6 @@ namespace NetMark
             mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
             if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) return false;
 
-            // Allow a small 5px tolerance for borders/shadows
             return wndRect.Left <= mi.rcMonitor.Left + 5 &&
                    wndRect.Top <= mi.rcMonitor.Top + 5 &&
                    wndRect.Right >= mi.rcMonitor.Right - 5 &&
@@ -1655,6 +1774,11 @@ namespace NetMark
                 if (s == null) return;
 
                 Log($"Refreshing env vars ({reason})...");
+                
+                // Invalidate the native IP cache so the next ExpandText() call
+                // queries live network state instead of returning the cached value.
+                BannerSettings.InvalidateIpCache();
+                
                 s.EvaluateCustomEnvVars();
                 foreach (var w in _windows)
                 {
@@ -1728,7 +1852,6 @@ namespace NetMark
             }
         }
 
-        // >>> CHANGED: Fixed debounce logic to prevent constant timer restarts
         private static void SetRemoteClientState(bool hide)
         {
             if (_pendingHideState == hide) return; // Only act if state is actually changing
@@ -1747,7 +1870,6 @@ namespace NetMark
                         EvaluateVisibilityState();
                     };
                 }
-                // Start timer only if it's not already running
                 if (!_rdpHideDebounceTimer.Enabled)
                 {
                     _rdpHideDebounceTimer.Start();
@@ -1755,7 +1877,6 @@ namespace NetMark
             }
             else
             {
-                // Show immediately
                 if (_rdpHideDebounceTimer != null) _rdpHideDebounceTimer.Stop();
                 _isHiddenForRdpClient = false;
                 EvaluateVisibilityState();
@@ -1980,10 +2101,12 @@ Dbg-File $bannerProgramPath
       position: fixed; bottom: 24px; right: 24px; z-index: 2000;
       display: flex; flex-direction: column; gap: 10px; align-items: stretch; width: 160px;
     }
+    /* RAINBOW MODE REMOVED:
     #rainbowEggCard {
       display: none; border: 2px dashed var(--accent); animation: dropIn 0.5s ease;
     }
     @keyframes dropIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    */
 
     /* Custom Modal Dialog */
     .modal-overlay {
@@ -2055,7 +2178,7 @@ Dbg-File $bannerProgramPath
           <button class="chip-btn" onclick="insertMacro('txtRight', '%IP_ADDRESS%')">+ IP address</button>
         </div>
       </div>
-      <div class="help-callout"><strong>Tip:</strong> Click the small chips above to insert special values. <code>%COMPUTERNAME%</code> shows your PC name, <code>%USERNAME%</code> shows your login name, <code>%IP_ADDRESS%</code> shows your network IP.</div>
+      <div class="help-callout"><strong>Tip:</strong> Click the small chips above to insert special values. <code>%COMPUTERNAME%</code> shows your PC name, <code>%USERNAME%</code> shows your login name, <code>%IP_ADDRESS%</code> shows your network IP (resolved natively by C# &mdash; no PowerShell needed).</div>
     </section>
     
     <section class="card">
@@ -2110,15 +2233,15 @@ Dbg-File $bannerProgramPath
         <div class="form-group">
           <div class="field-label"><span>Left margin</span><span class="field-hint">Padding from left edge</span></div>
           <div class="slider-container">
-            <input type="range" id="sliderMarginLeft" class="slider-input" min="0" max="100" value="15" oninput="syncMarginLeft(this.value)">
-            <div class="slider-val-badge" id="marginLeftBadge">15 px</div>
+            <input type="range" id="sliderMarginLeft" class="slider-input" min="0" max="100" value="25" oninput="syncMarginLeft(this.value)">
+            <div class="slider-val-badge" id="marginLeftBadge">25 px</div>
           </div>
         </div>
         <div class="form-group">
           <div class="field-label"><span>Right margin</span><span class="field-hint">Padding from right edge</span></div>
           <div class="slider-container">
-            <input type="range" id="sliderMarginRight" class="slider-input" min="0" max="100" value="15" oninput="syncMarginRight(this.value)">
-            <div class="slider-val-badge" id="marginRightBadge">15 px</div>
+            <input type="range" id="sliderMarginRight" class="slider-input" min="0" max="100" value="25" oninput="syncMarginRight(this.value)">
+            <div class="slider-val-badge" id="marginRightBadge">25 px</div>
           </div>
         </div>
       </div>
@@ -2128,7 +2251,7 @@ Dbg-File $bannerProgramPath
             <div class="toggle-label">Banner drop shadow</div>
             <div class="toggle-hint">Adds a soft shadow below and around the banner so it stands out from the desktop.</div>
           </div>
-          <label class="switch"><input type="checkbox" id="chkBannerShadow" checked onchange="updateAll()"><span class="slider-toggle"></span></label>
+          <label class="switch"><input type="checkbox" id="chkBannerShadow" onchange="updateAll()"><span class="slider-toggle"></span></label>
         </div>
       </div>
       <div style="height: 1px; background: var(--border-subtle); margin: 18px 0;"></div>
@@ -2138,14 +2261,14 @@ Dbg-File $bannerProgramPath
             <div class="toggle-label">Screen border (left, right, bottom)</div>
             <div class="toggle-hint">Wraps a colored border around the left, right, and bottom of every monitor. Same color as the banner. Reserves screen space so maximized windows avoid it &mdash; just like the top banner.</div>
           </div>
-          <label class="switch"><input type="checkbox" id="chkBorderEnabled" onchange="updateAll()"><span class="slider-toggle"></span></label>
+          <label class="switch"><input type="checkbox" id="chkBorderEnabled" checked onchange="updateAll()"><span class="slider-toggle"></span></label>
         </div>
       </div>
-      <div class="form-group" id="borderSizeGroup" style="opacity: 0.5; pointer-events: none;">
+      <div class="form-group" id="borderSizeGroup" style="opacity: 1; pointer-events: auto;">
         <div class="field-label"><span>Border thickness</span><span class="field-hint">In pixels</span></div>
         <div class="slider-container">
-          <input type="range" id="sliderBorderSize" class="slider-input" min="1" max="24" value="4" oninput="syncBorderSize(this.value)">
-          <div class="slider-val-badge" id="borderSizeBadge">4 px</div>
+          <input type="range" id="sliderBorderSize" class="slider-input" min="0" max="24" value="0" oninput="syncBorderSize(this.value)">
+          <div class="slider-val-badge" id="borderSizeBadge">0 px</div>
         </div>
         <div class="info-callout">The border color automatically matches the banner background color. Change the background color above to change the border color.</div>
       </div>
@@ -2235,17 +2358,18 @@ Dbg-File $bannerProgramPath
       <summary>
         <div class="summary-content">
           <h2 class="card-title">&#x2699;&#xFE0F; Custom Variables <span style="font-size: 11px; font-weight: 600; color: var(--text-tertiary); background: var(--bg-surface-subtle); padding: 2px 8px; border-radius: 999px; margin-left: 4px;">Advanced</span></h2>
-          <p class="card-subtitle" style="margin-left: 36px;">Create custom dynamic values. Hidden by default to keep things clean.</p>
+          <p class="card-subtitle" style="margin-left: 36px;">Create custom static text values. Hidden by default to keep things clean.</p>
         </div>
         <span class="chevron">&#x25BC;</span>
       </summary>
       <div class="env-list" id="envList"></div>
       <div style="padding: 0 20px 20px 20px;">
         <button class="btn btn-secondary btn-sm" onclick="addEnvRow('', '')">+ Add Variable</button>
-        <div class="help-callout"><strong>Example:</strong> Create a variable called <code>IP_ADDRESS</code> with a value starting with <code>$</code> (PowerShell). Then in your banner text, type <code>%IP_ADDRESS%</code> to show it. The running banner re-evaluates these every 30 seconds and immediately when your network changes &mdash; so an IP address change shows up live within a couple of seconds.</div>
+        <div class="help-callout"><strong>Note:</strong> <code>%IP_ADDRESS%</code> is now a built-in variable resolved natively via C# (<code>System.Net.NetworkInformation</code>) &mdash; no PowerShell subprocess needed. You can still create custom variables here with static text values. Use <code>%VAR_NAME%</code> in your banner text to reference them. The running banner refreshes the IP address within ~2 seconds of any network change.</div>
       </div>
     </details>
 
+    <!-- RAINBOW MODE REMOVED:
     <section class="card" id="rainbowEggCard" style="text-align: center;">
       <div class="toggle-row" style="display: inline-flex; padding: 12px 24px; border: none; background: transparent;">
         <div style="margin-right: 12px;">
@@ -2255,6 +2379,7 @@ Dbg-File $bannerProgramPath
         <label class="switch"><input type="checkbox" id="chkRainbowMode" onchange="updateAll()"><span class="slider-toggle"></span></label>
       </div>
     </section>
+    -->
   </main>
 
   <div class="floating-actions">
@@ -2266,7 +2391,7 @@ Dbg-File $bannerProgramPath
     <div class="modal-box">
       <div class="modal-icon">&#x2714;</div>
       <h3>Saved Successfully</h3>
-      <p id="modalMessage">Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.</p>
+      <p id="modalMessage">Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. The IP address refreshes natively within ~2 seconds of any network change (no PowerShell subprocess).</p>
       <button class="btn btn-primary" onclick="closeModal()">OK</button>
     </div>
   </div>
@@ -2307,35 +2432,39 @@ Dbg-File $bannerProgramPath
       bgColor: "#007a33", fgColor: "#ffffff", fontName: "Segoe UI", fontSize: 10,
       fontBold: true, fontItalic: false, fontUnderline: false, heightPx: 24,
       textShadow: false, textShadowColor: "#404040", textShadowOffset: 2, 
-      bannerShadow: true,
-      borderEnabled: false, borderSize: 4,
-      marginLeft: 15, marginRight: 15,
-      rainbowMode: false,
-      customEnvVars: [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }]
+      bannerShadow: false,
+      borderEnabled: true, borderSize: 0,
+      marginLeft: 25, marginRight: 25,
+      // RAINBOW MODE REMOVED: rainbowMode: false,
+      // IP_ADDRESS is now a built-in native variable — no PowerShell custom env var needed.
+      customEnvVars: []
     };
-    const mockSystemEnv = { "COMPUTERNAME": "WORKSTATION-01", "USERNAME": "AdminUser", "USERDOMAIN": "CORPNET" };
-    let rainbowInterval = null;
+    // Mock system env for preview simulation. IP_ADDRESS shows a generic placeholder
+    // since the browser cannot query the actual machine's network interfaces.
+    const mockSystemEnv = { "COMPUTERNAME": "WORKSTATION-01", "USERNAME": "AdminUser", "USERDOMAIN": "CORPNET", "IP_ADDRESS": "10.0.0.100" };
+    // RAINBOW MODE REMOVED: let rainbowInterval = null;
 
-    let gearClicks = 0;
-    let gearTimer = null;
-    document.getElementById('brandIcon').addEventListener('click', () => {
-        gearClicks++;
-        if (gearTimer) clearTimeout(gearTimer);
-        gearTimer = setTimeout(() => { gearClicks = 0; }, 3000); 
-
-        if (gearClicks >= 5) {
-            gearClicks = 0;
-            const egg = document.getElementById('rainbowEggCard');
-            const icon = document.getElementById('brandIcon');
-            icon.classList.add('spin');
-            setTimeout(() => icon.classList.remove('spin'), 500);
-            
-            if (egg.style.display === 'none' || egg.style.display === '') {
-                egg.style.display = 'block';
-                egg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-    });
+    // RAINBOW MODE REMOVED — gear-click easter egg handler commented out:
+    // let gearClicks = 0;
+    // let gearTimer = null;
+    // document.getElementById('brandIcon').addEventListener('click', () => {
+    //     gearClicks++;
+    //     if (gearTimer) clearTimeout(gearTimer);
+    //     gearTimer = setTimeout(() => { gearClicks = 0; }, 3000); 
+    // 
+    //     if (gearClicks >= 5) {
+    //         gearClicks = 0;
+    //         const egg = document.getElementById('rainbowEggCard');
+    //         const icon = document.getElementById('brandIcon');
+    //         icon.classList.add('spin');
+    //         setTimeout(() => icon.classList.remove('spin'), 500);
+    //         
+    //         if (egg.style.display === 'none' || egg.style.display === '') {
+    //             egg.style.display = 'block';
+    //             egg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    //         }
+    //     }
+    // });
 
     function hexToSignedArgb(hex) {
       hex = hex.replace('#', '');
@@ -2348,17 +2477,21 @@ Dbg-File $bannerProgramPath
     function expandPreview(text) {
       if (!text) return "";
       let result = text;
+      // Expand custom env vars generically — no hardcoded mock IP values.
+      // Values starting with '$' (legacy PowerShell expressions) are shown as
+      // a generic "<Dynamic Value>" placeholder rather than a fake IP address.
       appState.customEnvVars.forEach(item => {
         if (item.key.trim()) {
           const val = item.val.trim();
           const re = new RegExp(`%${item.key}%`, 'gi');
           let replacement = item.val;
           if (val.startsWith("$")) {
-            replacement = val.includes("NetIPAddress") ? "192.168.1.28" : "<Dynamic Value>";
+            replacement = "<Dynamic Value>";
           }
           result = result.replace(re, replacement);
         }
       });
+      // Expand built-in system variables (including IP_ADDRESS which is now native)
       for (const [k, v] of Object.entries(mockSystemEnv)) {
         const re = new RegExp(`%${k}%`, 'gi');
         result = result.replace(re, v);
@@ -2378,8 +2511,9 @@ Dbg-File $bannerProgramPath
       appState.bannerShadow = document.getElementById('chkBannerShadow').checked;
       appState.borderEnabled = document.getElementById('chkBorderEnabled').checked;
       
-      const chkRainbow = document.getElementById('chkRainbowMode');
-      if (chkRainbow) appState.rainbowMode = chkRainbow.checked;
+      // RAINBOW MODE REMOVED:
+      // const chkRainbow = document.getElementById('chkRainbowMode');
+      // if (chkRainbow) appState.rainbowMode = chkRainbow.checked;
 
       const tsControls = document.getElementById('textShadowControls');
       if (appState.textShadow) { tsControls.style.opacity = '1'; tsControls.style.pointerEvents = 'auto'; }
@@ -2412,39 +2546,42 @@ Dbg-File $bannerProgramPath
 
       const sim = document.getElementById('screenSimulator');
       
-      if (appState.rainbowMode) {
-          if (!rainbowInterval) {
-              rainbowInterval = setInterval(() => {
-                  const hue = (Date.now() / 60) % 360; 
-                  const color = `hsl(${hue}, 100%, 50%)`;
-                  banner.style.backgroundColor = color;
-                  if (appState.borderEnabled) {
-                      sim.style.borderLeftColor = color;
-                      sim.style.borderRightColor = color;
-                      sim.style.borderBottomColor = color;
-                  }
-              }, 50);
-          }
-      } else {
-          if (rainbowInterval) {
-              clearInterval(rainbowInterval);
-              rainbowInterval = null;
-          }
-          banner.style.backgroundColor = appState.bgColor;
-      }
+      // RAINBOW MODE REMOVED:
+      // if (appState.rainbowMode) {
+      //     if (!rainbowInterval) {
+      //         rainbowInterval = setInterval(() => {
+      //             const hue = (Date.now() / 60) % 360; 
+      //             const color = `hsl(${hue}, 100%, 50%)`;
+      //             banner.style.backgroundColor = color;
+      //             if (appState.borderEnabled) {
+      //                 sim.style.borderLeftColor = color;
+      //                 sim.style.borderRightColor = color;
+      //                 sim.style.borderBottomColor = color;
+      //             }
+      //         }, 50);
+      //     }
+      // } else {
+      //     if (rainbowInterval) {
+      //         clearInterval(rainbowInterval);
+      //         rainbowInterval = null;
+      //     }
+      //     banner.style.backgroundColor = appState.bgColor;
+      // }
+      banner.style.backgroundColor = appState.bgColor;
 
       if (appState.borderEnabled) {
           const s = `${appState.borderSize}px`;
-          const c = appState.rainbowMode ? banner.style.backgroundColor : appState.bgColor;
+          // RAINBOW MODE REMOVED: const c = appState.rainbowMode ? banner.style.backgroundColor : appState.bgColor;
+          const c = appState.bgColor;
           sim.style.borderLeftWidth = s;
           sim.style.borderRightWidth = s;
           sim.style.borderBottomWidth = s;
           
-          if (!appState.rainbowMode) {
-              sim.style.borderLeftColor = c;
-              sim.style.borderRightColor = c;
-              sim.style.borderBottomColor = c;
-          }
+          // RAINBOW MODE REMOVED: if (!appState.rainbowMode) {
+          sim.style.borderLeftColor = c;
+          sim.style.borderRightColor = c;
+          sim.style.borderBottomColor = c;
+          // }
       } else {
           sim.style.borderLeftWidth = '0';
           sim.style.borderRightWidth = '0';
@@ -2470,7 +2607,6 @@ Dbg-File $bannerProgramPath
     }
     function applyPreset(p) {
       document.getElementById('txtCenter').value = p.text;
-      // Clear Left and Right text to strictly show only the classification
       document.getElementById('txtLeft').value = '';
       document.getElementById('txtRight').value = '';
       
@@ -2527,7 +2663,7 @@ Dbg-File $bannerProgramPath
       appState.customEnvVars.forEach((item, index) => {
         const row = document.createElement('div');
         row.className = 'env-row';
-        row.innerHTML = `<div class="env-input-group"><label>Variable Name</label><input type="text" value="${item.key.replace(/"/g, '&quot;')}" placeholder="VAR_NAME" oninput="updateEnvRow(${index}, 'key', this.value)"></div><div class="env-input-group"><label>Value or PowerShell Command</label><input type="text" value="${item.val.replace(/"/g, '&quot;')}" placeholder="Value or $ expression" oninput="updateEnvRow(${index}, 'val', this.value)"></div><button class="btn-icon-danger" title="Delete" onclick="deleteEnvRow(${index})">&#x2715;</button>`;
+        row.innerHTML = `<div class="env-input-group"><label>Variable Name</label><input type="text" value="${item.key.replace(/"/g, '&quot;')}" placeholder="VAR_NAME" oninput="updateEnvRow(${index}, 'key', this.value)"></div><div class="env-input-group"><label>Value (static text)</label><input type="text" value="${item.val.replace(/"/g, '&quot;')}" placeholder="Static text value" oninput="updateEnvRow(${index}, 'val', this.value)"></div><button class="btn-icon-danger" title="Delete" onclick="deleteEnvRow(${index})">&#x2715;</button>`;
         list.appendChild(row);
       });
     }
@@ -2555,9 +2691,10 @@ Dbg-File $bannerProgramPath
       ini += `BorderSize=${appState.borderSize}\r\n`;
       ini += `MarginLeft=${appState.marginLeft}\r\n`;
       ini += `MarginRight=${appState.marginRight}\r\n`;
-      if (appState.rainbowMode) {
-          ini += `RainbowMode=True\r\n`;
-      }
+      // RAINBOW MODE REMOVED:
+      // if (appState.rainbowMode) {
+      //     ini += `RainbowMode=True\r\n`;
+      // }
       const validVars = appState.customEnvVars.filter(v => v.key.trim() !== "");
       if (validVars.length > 0) {
         ini += `\r\n[EnvVars]\r\n`;
@@ -2596,32 +2733,34 @@ Dbg-File $bannerProgramPath
       document.getElementById('txtCenter').value = '%COMPUTERNAME%';
       document.getElementById('txtRight').value = '%USERNAME%';
       document.getElementById('sliderHeight').value = 24;
-      document.getElementById('sliderMarginLeft').value = 15;
-      document.getElementById('sliderMarginRight').value = 15;
+      document.getElementById('sliderMarginLeft').value = 25;
+      document.getElementById('sliderMarginRight').value = 25;
       document.getElementById('selFontFamily').value = 'Segoe UI';
       document.getElementById('numFontSize').value = 10;
       document.getElementById('chkFontBold').checked = true;
       document.getElementById('chkFontItalic').checked = false;
       document.getElementById('chkFontUnderline').checked = false;
       document.getElementById('chkTextShadow').checked = false;
-      document.getElementById('chkBannerShadow').checked = true;
-      document.getElementById('chkBorderEnabled').checked = false;
-      document.getElementById('sliderBorderSize').value = 4;
+      document.getElementById('chkBannerShadow').checked = false;
+      document.getElementById('chkBorderEnabled').checked = true;
+      document.getElementById('sliderBorderSize').value = 0;
       document.getElementById('sliderTextShadowOffset').value = 2;
       document.getElementById('pickerTextShadow').value = '#404040';
       
-      const chkRainbow = document.getElementById('chkRainbowMode');
-      if (chkRainbow) chkRainbow.checked = false;
+      // RAINBOW MODE REMOVED:
+      // const chkRainbow = document.getElementById('chkRainbowMode');
+      // if (chkRainbow) chkRainbow.checked = false;
 
       syncColor('bg', '#007a33');
       syncColor('fg', '#ffffff');
       syncColor('tsc', '#404040');
       syncHeight(24);
-      syncMarginLeft(15);
-      syncMarginRight(15);
-      syncBorderSize(4);
+      syncMarginLeft(25);
+      syncMarginRight(25);
+      syncBorderSize(0);
       syncTextShadowOffset(2);
-      appState.customEnvVars = [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }];
+      // IP_ADDRESS is now built-in — no PowerShell custom env var needed.
+      appState.customEnvVars = [];
       document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
       renderEnvTable();
       updateAll();
@@ -2656,7 +2795,7 @@ TextCenter=%COMPUTERNAME%
 TextRight=%USERNAME%
 BgColor=-16745933
 FgColor=-1
-FontName=Segoe UI
+FontName=Segoe ui
 FontSize=10
 FontBold=True
 FontItalic=False
@@ -2665,14 +2804,17 @@ Height=24
 TextShadow=False
 TextShadowColor=-12566464
 TextShadowOffset=2
-BannerShadow=True
-BorderEnabled=False
-BorderSize=4
-MarginLeft=15
-MarginRight=15
+BannerShadow=False
+BorderEnabled=True
+BorderSize=0
+MarginLeft=25
+MarginRight=25
 
-[EnvVars]
-IP_ADDRESS=$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress
+; IP_ADDRESS is now a built-in variable resolved natively by C# via
+; System.Net.NetworkInformation — no PowerShell subprocess required.
+; The [EnvVars] section is intentionally omitted. Add your own custom
+; static-text variables here if needed (e.g. MY_VAR=Some Value, then
+; use %MY_VAR% in your banner text above).
 '@
 Set-Content -LiteralPath $defaultIniPath -Value $defaultIniContent -Encoding UTF8
 Dbg-File $defaultIniPath
@@ -2736,7 +2878,7 @@ Start-Sleep -Seconds 3
  $running = Get-Process -Name "NetMark" -ErrorAction SilentlyContinue
 if (-not $running) {
     Dbg-Warn "NetMark process is not running."
-    Dbg-Warn "Note: v32 uses [Conditional('DEBUG')] logging — C:\NetMark-startup.log"
+    Dbg-Warn "Note: v35 uses [Conditional('DEBUG')] logging — C:\NetMark-startup.log"
     Dbg-Warn "will NOT exist in Release builds. Check the on-screen MessageBox for errors."
     $logFile = "C:\NetMark-startup.log"
     if (Test-Path $logFile) {
@@ -2750,7 +2892,7 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetMark (v32) is running in background."                             -ForegroundColor White
+Write-Host " NetMark (v35) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
