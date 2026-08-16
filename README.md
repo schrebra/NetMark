@@ -24,3 +24,28 @@ NetMark was built to solve these problems. It is completely portable—requiring
 - **Defense Contractors:** Working on CUI (Controlled Unclassified Information) or classified programs who need a reliable, easily deployable marking tool that doesn't require complex installer packages.
 - **System Administrators:** Managing secure environments who want a zero-dependency, portable executable that can be pushed to workstations easily using scripts, network shares, or deployment tools.
 - **Everyday Power Users:** Who simply want a persistent, un-intrusive status bar at the top of their screen displaying custom system information.
+
+## Compiling Your Own Build
+
+For security and transparency, NetMark is distributed as a PowerShell generator script. This allows you to inspect exactly what goes into the application and compile it yourself locally. 
+
+### Prerequisites
+To build the executable, you only need:
+- A Windows machine
+- The **.NET 8 SDK** (or newer) installed
+- PowerShell
+
+### Steps to Compile
+1. Save the provided `NetMark.ps1` script to a folder on your computer (for example, `C:\temp\`).
+2. Open Windows PowerShell as a admin.
+3. Navigate to the folder where you saved the script:
+   `cd C:\temp`
+4. Run the script:
+   `.\NetMark.ps1`
+5. After it runs, it will create C:\dev\NetMark directory where the files have been compiled.
+6. Navigate using explorer to this path to see your newly created files.
+   `C:\Dev\NetMark\bin\Release\publish`
+
+The script will automatically clean the directory, emit all the necessary C# source files, the embedded HTML configuration page, and the default INI file. It then invokes the .NET compiler to build a single, portable, self-contained `.exe` file. 
+
+Once compilation is finished, the script will automatically launch your newly built NetMark banner and open the HTML configurator in your default web browser so you can begin customizing it.
