@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v16 - Stacked floating buttons, hidden Rainbow Mode easter egg.
+    v17 - Custom dialogs, button sizing, text centering fix, margin controls.
 #>
 
 [CmdletBinding()]
@@ -180,7 +180,7 @@ namespace NetMark
 Set-Content -LiteralPath $nativePath -Value $nativeContent -Encoding UTF8
 Dbg-File $nativePath
 
-# ---- Shared\BannerSettings.cs ---------------------------------------------
+# ---- Shared\BannerSettings.cs (UPDATED: Margins) -----------------------
  $settingsPath = Join-Path $sharedDir 'BannerSettings.cs'
  $settingsContent = @'
 using System;
@@ -213,6 +213,9 @@ namespace NetMark
         public bool    BannerShadow     = true;
         public bool    BorderEnabled    = false;
         public int     BorderSize       = 4;
+
+        public int     MarginLeft       = 10;
+        public int     MarginRight      = 10;
 
         public bool    RainbowMode      = false; 
 
@@ -281,6 +284,8 @@ namespace NetMark
                         case "BannerShadow":      try { s.BannerShadow = bool.Parse(val); } catch { } break;
                         case "BorderEnabled":     try { s.BorderEnabled = bool.Parse(val); } catch { } break;
                         case "BorderSize":        try { s.BorderSize = int.Parse(val); } catch { } break;
+                        case "MarginLeft":        try { s.MarginLeft = int.Parse(val); } catch { } break;
+                        case "MarginRight":       try { s.MarginRight = int.Parse(val); } catch { } break;
                         case "RainbowMode":       try { s.RainbowMode = bool.Parse(val); } catch { } break;
                     }
                 }
@@ -314,8 +319,9 @@ namespace NetMark
             sb.AppendLine($"BannerShadow={BannerShadow}");
             sb.AppendLine($"BorderEnabled={BorderEnabled}");
             sb.AppendLine($"BorderSize={BorderSize}");
+            sb.AppendLine($"MarginLeft={MarginLeft}");
+            sb.AppendLine($"MarginRight={MarginRight}");
             
-            // Only serialize RainbowMode if it's true, to hide it from normal users
             if (RainbowMode)
             {
                 sb.AppendLine($"RainbowMode={RainbowMode}");
@@ -414,7 +420,7 @@ namespace NetMark
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs (UPDATED: Rainbow Brighter & Refresh) --------
+# ---- Shared\BannerWindow.cs (UPDATED: Margins & Centering) --------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -657,15 +663,22 @@ namespace NetMark
 
                 using (Font font = new Font(fontName, fontSize, style))
                 {
-                    Rectangle leftRect   = new Rectangle(10, 0, this.Width / 3, this.Height);
-                    Rectangle centerRect = new Rectangle(this.Width / 3, 0, this.Width / 3, this.Height);
-                    Rectangle rightRect  = new Rectangle((this.Width / 3) * 2, 0, (this.Width / 3) - 10, this.Height);
+                    // Shift Y down by 1px to fix the "too high" centering issue
+                    int yOffset = 1;
+                    int mLeft = _settings.MarginLeft > 0 ? _settings.MarginLeft : 0;
+                    int mRight = _settings.MarginRight > 0 ? _settings.MarginRight : 0;
+                    int slotWidth = this.Width / 3;
+
+                    Rectangle leftRect   = new Rectangle(mLeft, yOffset, slotWidth - mLeft, this.Height);
+                    Rectangle centerRect = new Rectangle(slotWidth, yOffset, slotWidth, this.Height);
+                    Rectangle rightRect  = new Rectangle(slotWidth * 2, yOffset, slotWidth - mRight, this.Height);
 
                     string leftText   = _settings.ExpandText(_settings.TextLeft);
                     string centerText = _settings.ExpandText(_settings.TextCenter);
                     string rightText  = _settings.ExpandText(_settings.TextRight);
 
-                    TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
+                    // Use Top instead of VerticalCenter combined with yOffset for perfect control
+                    TextFormatFlags flags = TextFormatFlags.Top | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
 
                     if (_settings.TextShadow)
                     {
@@ -743,7 +756,7 @@ namespace NetMark
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs (UPDATED: Rainbow Brighter & Refresh) -------
+# ---- Shared\BorderWindow.cs -----------------------------------------------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -1114,7 +1127,7 @@ namespace NetMark
         private static int Main(string[] args)
         {
             Log("=========================================================");
-            Log("NetMark starting (v16 - Easter Egg)...");
+            Log("NetMark starting (v17 - Custom Dialog & Centering)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
@@ -1533,7 +1546,7 @@ Dbg-File $bannerProgramPath
     .brand-icon.spin { transform: rotate(360deg); }
     .brand-text h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
     .brand-text p { font-size: 12px; color: var(--text-tertiary); }
-    .app-main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 24px 28px 100px 28px; display: flex; flex-direction: column; gap: 20px; }
+    .app-main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 24px 28px 120px 28px; display: flex; flex-direction: column; gap: 20px; }
     .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-xs); transition: border-color var(--transition-fast); }
     .card:hover { border-color: var(--border-strong); }
     .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
@@ -1594,26 +1607,40 @@ Dbg-File $bannerProgramPath
     .env-input-group input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
     .btn-icon-danger { background: var(--bg-surface); border: 1px solid var(--border-strong); color: var(--danger); width: 38px; height: 38px; border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all var(--transition-fast); }
     .btn-icon-danger:hover { background: var(--danger-subtle); border-color: var(--danger); }
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; height: 38px; border-radius: var(--radius-sm); font-size: 13.5px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all var(--transition-fast); user-select: none; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; height: 42px; width: 160px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all var(--transition-fast); user-select: none; }
     .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
     .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3); }
     .btn-secondary { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-primary); }
     .btn-secondary:hover { background: var(--bg-surface-subtle); border-color: var(--border-focus); }
-    .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
+    .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; width: auto; }
     .help-callout { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: #92400e; margin-top: 8px; line-height: 1.5; }
     .info-callout { background: var(--accent-subtle); border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: #1e40af; margin-top: 8px; line-height: 1.5; }
     .floating-actions {
       position: fixed; bottom: 24px; right: 24px; z-index: 2000;
-      display: flex; flex-direction: column; gap: 10px; align-items: stretch; width: 150px;
-      background: rgba(255,255,255,0.9); padding: 10px;
-      border-radius: var(--radius-md); box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-      backdrop-filter: blur(6px);
+      display: flex; flex-direction: column; gap: 10px; align-items: stretch; width: 160px;
     }
-    .floating-actions .btn { width: 100%; }
     #rainbowEggCard {
       display: none; border: 2px dashed var(--accent); animation: dropIn 0.5s ease;
     }
     @keyframes dropIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Custom Modal Dialog */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; z-index: 3000;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .modal-box {
+      background: var(--bg-surface); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg); padding: 28px; max-width: 420px; width: 90%;
+      transform: scale(0.95); transition: transform 0.2s ease; text-align: center;
+    }
+    .modal-overlay.active .modal-box { transform: scale(1); }
+    .modal-icon { width: 48px; height: 48px; background: var(--accent-subtle); color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 0 auto 16px; }
+    .modal-box h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .modal-box p { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -1716,6 +1743,22 @@ Dbg-File $bannerProgramPath
         <div class="slider-container">
           <input type="range" id="sliderHeight" class="slider-input" min="16" max="64" value="24" oninput="syncHeight(this.value)">
           <div class="slider-val-badge" id="heightBadge">24 px</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <div class="field-label"><span>Left margin</span><span class="field-hint">Padding from left edge</span></div>
+          <div class="slider-container">
+            <input type="range" id="sliderMarginLeft" class="slider-input" min="0" max="100" value="10" oninput="syncMarginLeft(this.value)">
+            <div class="slider-val-badge" id="marginLeftBadge">10 px</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="field-label"><span>Right margin</span><span class="field-hint">Padding from right edge</span></div>
+          <div class="slider-container">
+            <input type="range" id="sliderMarginRight" class="slider-input" min="0" max="100" value="10" oninput="syncMarginRight(this.value)">
+            <div class="slider-val-badge" id="marginRightBadge">10 px</div>
+          </div>
         </div>
       </div>
       <div class="form-group">
@@ -1854,8 +1897,17 @@ Dbg-File $bannerProgramPath
   </main>
 
   <div class="floating-actions">
-    <button type="button" class="btn btn-secondary btn-sm" onclick="resetToDefaults()"><span>&#x21BA;</span> Reset</button>
-    <button type="button" class="btn btn-primary btn-sm" onclick="downloadIni()"><span>&#x1F4BE;</span> Save Settings</button>
+    <button type="button" class="btn btn-primary" onclick="downloadIni()"><span>&#x1F4BE;</span> Save Settings</button>
+    <button type="button" class="btn btn-secondary" onclick="resetToDefaults()"><span>&#x21BA;</span> Reset</button>
+  </div>
+
+  <div class="modal-overlay" id="customAlert">
+    <div class="modal-box">
+      <div class="modal-icon">&#x2714;</div>
+      <h3>Saved Successfully</h3>
+      <p id="modalMessage">Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.</p>
+      <button class="btn btn-primary" onclick="closeModal()">OK</button>
+    </div>
   </div>
 
   <script>
@@ -1896,6 +1948,7 @@ Dbg-File $bannerProgramPath
       textShadow: false, textShadowColor: "#000000", textShadowOffset: 2, 
       bannerShadow: true,
       borderEnabled: false, borderSize: 4,
+      marginLeft: 10, marginRight: 10,
       rainbowMode: false,
       customEnvVars: [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }]
     };
@@ -1908,7 +1961,7 @@ Dbg-File $bannerProgramPath
     document.getElementById('brandIcon').addEventListener('click', () => {
         gearClicks++;
         if (gearTimer) clearTimeout(gearTimer);
-        gearTimer = setTimeout(() => { gearClicks = 0; }, 3000); // 3 seconds to click 5 times
+        gearTimer = setTimeout(() => { gearClicks = 0; }, 3000); 
 
         if (gearClicks >= 5) {
             gearClicks = 0;
@@ -1982,6 +2035,12 @@ Dbg-File $bannerProgramPath
       banner.style.fontStyle = appState.fontItalic ? 'italic' : 'normal';
       banner.style.textDecoration = appState.fontUnderline ? 'underline' : 'none';
       
+      // Adjust HTML preview margins
+      const slotL = document.getElementById('slotLeft');
+      const slotR = document.getElementById('slotRight');
+      slotL.style.marginLeft = `${appState.marginLeft}px`;
+      slotR.style.marginRight = `${appState.marginRight}px`;
+
       if (appState.textShadow) {
           const off = `${appState.textShadowOffset}px`;
           banner.style.textShadow = `${off} ${off} 2px ${appState.textShadowColor}`;
@@ -2037,6 +2096,8 @@ Dbg-File $bannerProgramPath
       document.getElementById('slotRight').textContent = expandPreview(appState.textRight);
     }
     function syncHeight(val) { appState.heightPx = parseInt(val); document.getElementById('heightBadge').textContent = `${val} px`; updateAll(); }
+    function syncMarginLeft(val) { appState.marginLeft = parseInt(val); document.getElementById('marginLeftBadge').textContent = `${val} px`; updateAll(); }
+    function syncMarginRight(val) { appState.marginRight = parseInt(val); document.getElementById('marginRightBadge').textContent = `${val} px`; updateAll(); }
     function syncBorderSize(val) { appState.borderSize = parseInt(val); document.getElementById('borderSizeBadge').textContent = `${val} px`; updateAll(); }
     function syncTextShadowOffset(val) { appState.textShadowOffset = parseInt(val); document.getElementById('tsOffsetBadge').textContent = `${val} px`; updateAll(); }
     function syncColor(type, val) {
@@ -2126,7 +2187,8 @@ Dbg-File $bannerProgramPath
       ini += `BannerShadow=${appState.bannerShadow ? "True" : "False"}\r\n`;
       ini += `BorderEnabled=${appState.borderEnabled ? "True" : "False"}\r\n`;
       ini += `BorderSize=${appState.borderSize}\r\n`;
-      // Only output RainbowMode if it is enabled
+      ini += `MarginLeft=${appState.marginLeft}\r\n`;
+      ini += `MarginRight=${appState.marginRight}\r\n`;
       if (appState.rainbowMode) {
           ini += `RainbowMode=True\r\n`;
       }
@@ -2145,7 +2207,7 @@ Dbg-File $bannerProgramPath
           const writable = await handle.createWritable();
           await writable.write(text);
           await writable.close();
-          alert("Saved! Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.");
+          showModal();
         } catch (err) { console.error("Save cancelled or failed:", err); }
       } else {
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -2153,8 +2215,14 @@ Dbg-File $bannerProgramPath
         const a = document.createElement('a');
         a.href = url; a.download = 'NetMark.ini'; a.click();
         URL.revokeObjectURL(url);
-        alert("Saved! Please ensure this NetMark.ini file is placed in the same directory as NetMark.exe for the changes to take effect. The running banner will update automatically. Env vars (like IP address) will also refresh within ~2 seconds of any network change.");
+        showModal();
       }
+    }
+    function showModal() {
+        document.getElementById('customAlert').classList.add('active');
+    }
+    function closeModal() {
+        document.getElementById('customAlert').classList.remove('active');
     }
     function resetToDefaults() {
       if (!confirm("Reset all settings back to defaults?")) return;
@@ -2162,6 +2230,8 @@ Dbg-File $bannerProgramPath
       document.getElementById('txtCenter').value = '%COMPUTERNAME%';
       document.getElementById('txtRight').value = '%USERNAME%';
       document.getElementById('sliderHeight').value = 24;
+      document.getElementById('sliderMarginLeft').value = 10;
+      document.getElementById('sliderMarginRight').value = 10;
       document.getElementById('selFontFamily').value = 'Segoe UI';
       document.getElementById('numFontSize').value = 10;
       document.getElementById('chkFontBold').checked = true;
@@ -2174,18 +2244,15 @@ Dbg-File $bannerProgramPath
       document.getElementById('sliderTextShadowOffset').value = 2;
       document.getElementById('pickerTextShadow').value = '#000000';
       
-      // Reset Easter Egg safely if it exists
       const chkRainbow = document.getElementById('chkRainbowMode');
-      if (chkRainbow) {
-          chkRainbow.checked = false;
-          // Optionally hide it again
-          // document.getElementById('rainbowEggCard').style.display = 'none';
-      }
+      if (chkRainbow) chkRainbow.checked = false;
 
       syncColor('bg', '#007a33');
       syncColor('fg', '#ffffff');
       syncColor('tsc', '#000000');
       syncHeight(24);
+      syncMarginLeft(10);
+      syncMarginRight(10);
       syncBorderSize(4);
       syncTextShadowOffset(2);
       appState.customEnvVars = [{ key: "IP_ADDRESS", val: "$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress" }];
@@ -2214,7 +2281,7 @@ Dbg-File $bannerProgramPath
 Set-Content -LiteralPath $htmlPath -Value $htmlContent -Encoding UTF8
 Dbg-File $htmlPath
 
-# ---- NetMark\NetMark.default.ini (Removed RainbowMode) ----------------
+# ---- NetMark\NetMark.default.ini (Added Margins) ----------------------
  $defaultIniPath = Join-Path $bannerDir 'NetMark.default.ini'
  $defaultIniContent = @'
 [Settings]
@@ -2235,6 +2302,8 @@ TextShadowOffset=2
 BannerShadow=True
 BorderEnabled=False
 BorderSize=4
+MarginLeft=10
+MarginRight=10
 
 [EnvVars]
 IP_ADDRESS=$VerbosePreference = 'SilentlyContinue'; (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|Virtual|QEMU' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' }).IPAddress
@@ -2313,7 +2382,7 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetMark (v16) is running in background."                             -ForegroundColor White
+Write-Host " NetMark (v17) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
