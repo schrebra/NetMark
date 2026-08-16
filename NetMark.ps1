@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v17 - Custom dialogs, button sizing, text centering fix, margin controls.
+    v19 - Fixes infinite AppBar pushdown loop & text centering.
 #>
 
 [CmdletBinding()]
@@ -180,7 +180,7 @@ namespace NetMark
 Set-Content -LiteralPath $nativePath -Value $nativeContent -Encoding UTF8
 Dbg-File $nativePath
 
-# ---- Shared\BannerSettings.cs (UPDATED: Margins) -----------------------
+# ---- Shared\BannerSettings.cs ---------------------------------------------
  $settingsPath = Join-Path $sharedDir 'BannerSettings.cs'
  $settingsContent = @'
 using System;
@@ -420,7 +420,7 @@ namespace NetMark
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs (UPDATED: Margins & Centering) --------
+# ---- Shared\BannerWindow.cs (FIXED: Infinite Loop & Centering) ---------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -432,10 +432,11 @@ namespace NetMark
 {
     internal sealed class BannerWindow : Form
     {
-        private readonly NativeMethods.MONITORINFOEX _monitor;
+        private readonly IntPtr _hMonitor;
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
+        private bool _isUpdating; // Re-entrancy guard
         private int _hue = 0;
         private System.Windows.Forms.Timer _rainbowTimer;
 
@@ -444,9 +445,9 @@ namespace NetMark
             try { System.IO.File.AppendAllText("C:\\NetMark-startup.log", $"{DateTime.Now}: [Banner] {msg}\n"); } catch { }
         }
 
-        public BannerWindow(NativeMethods.MONITORINFOEX monitor, BannerSettings settings)
+        public BannerWindow(IntPtr hMonitor, BannerSettings settings)
         {
-            _monitor = monitor;
+            _hMonitor = hMonitor;
             _settings = settings ?? new BannerSettings();
             _callbackMsg = NativeMethods.RegisterWindowMessage("NetMarkAppBarCallback");
 
@@ -457,7 +458,7 @@ namespace NetMark
             this.AutoScaleMode = AutoScaleMode.None;
             
             this.Bounds = ComputeVisibleWindowRect();
-            Log("BannerWindow created for monitor: " + monitor.szDevice);
+            Log("BannerWindow created for monitor: " + _hMonitor);
             
             if (_settings.RainbowMode) StartRainbowTimer();
         }
@@ -568,12 +569,20 @@ namespace NetMark
             }
         }
 
+        private NativeMethods.MONITORINFOEX GetCurrentMonitorInfo()
+        {
+            NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX { cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
+            NativeMethods.GetMonitorInfo(_hMonitor, ref mi);
+            return mi;
+        }
+
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            var rc = _monitor.rcWork;
-            int y = rc.Top;
+            // CRITICAL FIX: Must use rcMonitor (absolute screen coords), NOT rcWork.
+            // If we use rcWork, it already excludes the AppBar, causing an infinite push-down loop!
+            var rc = GetCurrentMonitorInfo().rcMonitor;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
-            return new NativeMethods.RECT { Left = rc.Left, Top = y, Right = rc.Right, Bottom = y + h };
+            return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Right, Bottom = rc.Top + h };
         }
 
         private Rectangle ComputeVisibleWindowRect()
@@ -597,17 +606,7 @@ namespace NetMark
             if (r != 0)
             {
                 _registered = true;
-                NativeMethods.APPBARDATA q2 = new NativeMethods.APPBARDATA
-                {
-                    cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
-                    hWnd = this.Handle,
-                    uCallbackMessage = (uint)_callbackMsg,
-                    uEdge = NativeMethods.ABE_TOP,
-                    rc = ComputeAppBarRect()
-                };
-                NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref q2);
-                NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref q2);
-                this.Bounds = q2.rc.ToRectangle();
+                ReassertAppBar();
                 Log("AppBar registered successfully.");
             }
             else
@@ -624,18 +623,27 @@ namespace NetMark
 
         private void ReassertAppBar()
         {
-            if (!_registered) return;
-            NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+            if (!_registered || _isUpdating) return;
+            _isUpdating = true;
+            try
             {
-                cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
-                hWnd = this.Handle,
-                uCallbackMessage = (uint)_callbackMsg,
-                uEdge = NativeMethods.ABE_TOP,
-                rc = ComputeAppBarRect()
-            };
-            NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
-            NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
-            this.Bounds = abd.rc.ToRectangle();
+                NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+                {
+                    cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
+                    hWnd = this.Handle,
+                    uCallbackMessage = (uint)_callbackMsg,
+                    uEdge = NativeMethods.ABE_TOP,
+                    rc = ComputeAppBarRect()
+                };
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
+                this.Bounds = abd.rc.ToRectangle();
+            }
+            catch { }
+            finally
+            {
+                _isUpdating = false;
+            }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -663,22 +671,19 @@ namespace NetMark
 
                 using (Font font = new Font(fontName, fontSize, style))
                 {
-                    // Shift Y down by 1px to fix the "too high" centering issue
-                    int yOffset = 1;
                     int mLeft = _settings.MarginLeft > 0 ? _settings.MarginLeft : 0;
                     int mRight = _settings.MarginRight > 0 ? _settings.MarginRight : 0;
                     int slotWidth = this.Width / 3;
 
-                    Rectangle leftRect   = new Rectangle(mLeft, yOffset, slotWidth - mLeft, this.Height);
-                    Rectangle centerRect = new Rectangle(slotWidth, yOffset, slotWidth, this.Height);
-                    Rectangle rightRect  = new Rectangle(slotWidth * 2, yOffset, slotWidth - mRight, this.Height);
+                    Rectangle leftRect   = new Rectangle(mLeft, 0, slotWidth - mLeft, this.Height);
+                    Rectangle centerRect = new Rectangle(slotWidth, 0, slotWidth, this.Height);
+                    Rectangle rightRect  = new Rectangle(slotWidth * 2, 0, slotWidth - mRight, this.Height);
 
                     string leftText   = _settings.ExpandText(_settings.TextLeft);
                     string centerText = _settings.ExpandText(_settings.TextCenter);
                     string rightText  = _settings.ExpandText(_settings.TextRight);
 
-                    // Use Top instead of VerticalCenter combined with yOffset for perfect control
-                    TextFormatFlags flags = TextFormatFlags.Top | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
+                    TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
 
                     if (_settings.TextShadow)
                     {
@@ -756,7 +761,7 @@ namespace NetMark
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs -----------------------------------------------
+# ---- Shared\BorderWindow.cs (FIXED: Infinite Loop) --------------------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -768,11 +773,12 @@ namespace NetMark
 {
     internal sealed class BorderWindow : Form
     {
-        private readonly NativeMethods.MONITORINFOEX _monitor;
+        private readonly IntPtr _hMonitor;
         private readonly uint _edge;
         private BannerSettings _settings;
         private readonly int _callbackMsg;
         private bool _registered;
+        private bool _isUpdating; // Re-entrancy guard
         private int _hue = 0;
         private System.Windows.Forms.Timer _rainbowTimer;
 
@@ -783,9 +789,9 @@ namespace NetMark
 
         public BannerSettings CurrentSettings => _settings;
 
-        public BorderWindow(NativeMethods.MONITORINFOEX monitor, BannerSettings settings, uint edge)
+        public BorderWindow(IntPtr hMonitor, BannerSettings settings, uint edge)
         {
-            _monitor = monitor;
+            _hMonitor = hMonitor;
             _settings = settings ?? new BannerSettings();
             _edge = edge;
             _callbackMsg = NativeMethods.RegisterWindowMessage("NetMarkBorderAppBarCallback");
@@ -797,7 +803,7 @@ namespace NetMark
             this.AutoScaleMode = AutoScaleMode.None;
             
             this.Bounds = ComputeVisibleWindowRect();
-            Log($"BorderWindow created edge={edge} monitor={monitor.szDevice}");
+            Log($"BorderWindow created edge={edge} monitor={hMonitor}");
 
             if (_settings.RainbowMode) StartRainbowTimer();
         }
@@ -893,10 +899,18 @@ namespace NetMark
             }
         }
 
+        private NativeMethods.MONITORINFOEX GetCurrentMonitorInfo()
+        {
+            NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX { cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
+            NativeMethods.GetMonitorInfo(_hMonitor, ref mi);
+            return mi;
+        }
+
         private NativeMethods.RECT ComputeAppBarRect()
         {
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
-            var rc = _monitor.rcWork;
+            // CRITICAL FIX: Must use rcMonitor (absolute screen coords), NOT rcWork.
+            var rc = GetCurrentMonitorInfo().rcMonitor;
 
             switch (_edge)
             {
@@ -931,17 +945,7 @@ namespace NetMark
             if (r != 0)
             {
                 _registered = true;
-                NativeMethods.APPBARDATA q2 = new NativeMethods.APPBARDATA
-                {
-                    cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
-                    hWnd = this.Handle,
-                    uCallbackMessage = (uint)_callbackMsg,
-                    uEdge = _edge,
-                    rc = ComputeAppBarRect()
-                };
-                NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref q2);
-                NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref q2);
-                this.Bounds = q2.rc.ToRectangle();
+                ReassertAppBar();
                 Log($"AppBar registered edge={_edge}");
             }
             else
@@ -958,18 +962,27 @@ namespace NetMark
 
         private void ReassertAppBar()
         {
-            if (!_registered) return;
-            NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+            if (!_registered || _isUpdating) return;
+            _isUpdating = true;
+            try
             {
-                cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
-                hWnd = this.Handle,
-                uCallbackMessage = (uint)_callbackMsg,
-                uEdge = _edge,
-                rc = ComputeAppBarRect()
-            };
-            NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
-            NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
-            this.Bounds = abd.rc.ToRectangle();
+                NativeMethods.APPBARDATA abd = new NativeMethods.APPBARDATA
+                {
+                    cbSize = Marshal.SizeOf(typeof(NativeMethods.APPBARDATA)),
+                    hWnd = this.Handle,
+                    uCallbackMessage = (uint)_callbackMsg,
+                    uEdge = _edge,
+                    rc = ComputeAppBarRect()
+                };
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
+                NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref abd);
+                this.Bounds = abd.rc.ToRectangle();
+            }
+            catch { }
+            finally
+            {
+                _isUpdating = false;
+            }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -1108,7 +1121,7 @@ namespace NetMark
     {
         private static readonly List<BannerWindow>  _windows       = new List<BannerWindow>();
         private static readonly List<BorderWindow>  _borderWindows = new List<BorderWindow>();
-        private static List<NativeMethods.MONITORINFOEX> _monitors = new List<NativeMethods.MONITORINFOEX>();
+        private static List<IntPtr> _monitors = new List<IntPtr>();
 
         private static System.Threading.Timer _watchdog;
         private static System.Threading.Timer _envVarRefreshTimer;
@@ -1127,7 +1140,7 @@ namespace NetMark
         private static int Main(string[] args)
         {
             Log("=========================================================");
-            Log("NetMark starting (v17 - Custom Dialog & Centering)...");
+            Log("NetMark starting (v19 - Infinite Loop Fix)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
@@ -1177,11 +1190,10 @@ namespace NetMark
                 }
 
                 Log("Enumerating monitors...");
-                _monitors = new List<NativeMethods.MONITORINFOEX>();
+                _monitors = new List<IntPtr>();
                 NativeMethods.MonitorEnumProc callback = (IntPtr hMon, IntPtr hdc, ref NativeMethods.RECT rc, IntPtr data) =>
                 {
-                    NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX)) };
-                    if (NativeMethods.GetMonitorInfo(hMon, ref mi)) _monitors.Add(mi);
+                    _monitors.Add(hMon);
                     return true;
                 };
                 NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
@@ -1206,9 +1218,9 @@ namespace NetMark
                 });
 
                 Log("Creating banner windows...");
-                foreach (var mon in _monitors)
+                foreach (var hMon in _monitors)
                 {
-                    var w = new BannerWindow(mon, settings);
+                    var w = new BannerWindow(hMon, settings);
                     w.Show();
                     _windows.Add(w);
                 }
@@ -1289,17 +1301,17 @@ namespace NetMark
 
                     if (newEnabled)
                     {
-                        foreach (var mon in _monitors)
+                        foreach (var hMon in _monitors)
                         {
-                            var lw = new BorderWindow(mon, settings, NativeMethods.ABE_LEFT);
+                            var lw = new BorderWindow(hMon, settings, NativeMethods.ABE_LEFT);
                             lw.Show();
                             _borderWindows.Add(lw);
 
-                            var rw = new BorderWindow(mon, settings, NativeMethods.ABE_RIGHT);
+                            var rw = new BorderWindow(hMon, settings, NativeMethods.ABE_RIGHT);
                             rw.Show();
                             _borderWindows.Add(rw);
 
-                            var bw = new BorderWindow(mon, settings, NativeMethods.ABE_BOTTOM);
+                            var bw = new BorderWindow(hMon, settings, NativeMethods.ABE_BOTTOM);
                             bw.Show();
                             _borderWindows.Add(bw);
                         }
@@ -1955,7 +1967,6 @@ Dbg-File $bannerProgramPath
     const mockSystemEnv = { "COMPUTERNAME": "WORKSTATION-01", "USERNAME": "AdminUser", "USERDOMAIN": "CORPNET" };
     let rainbowInterval = null;
 
-    // Easter Egg Logic
     let gearClicks = 0;
     let gearTimer = null;
     document.getElementById('brandIcon').addEventListener('click', () => {
@@ -2035,7 +2046,6 @@ Dbg-File $bannerProgramPath
       banner.style.fontStyle = appState.fontItalic ? 'italic' : 'normal';
       banner.style.textDecoration = appState.fontUnderline ? 'underline' : 'none';
       
-      // Adjust HTML preview margins
       const slotL = document.getElementById('slotLeft');
       const slotR = document.getElementById('slotRight');
       slotL.style.marginLeft = `${appState.marginLeft}px`;
@@ -2281,7 +2291,7 @@ Dbg-File $bannerProgramPath
 Set-Content -LiteralPath $htmlPath -Value $htmlContent -Encoding UTF8
 Dbg-File $htmlPath
 
-# ---- NetMark\NetMark.default.ini (Added Margins) ----------------------
+# ---- NetMark\NetMark.default.ini --------------------------------------
  $defaultIniPath = Join-Path $bannerDir 'NetMark.default.ini'
  $defaultIniContent = @'
 [Settings]
@@ -2382,7 +2392,7 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetMark (v17) is running in background."                             -ForegroundColor White
+Write-Host " NetMark (v19) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
