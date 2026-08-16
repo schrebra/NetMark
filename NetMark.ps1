@@ -2,7 +2,7 @@
 .SYNOPSIS
     Bootstraps the NetMark C# project from scratch, compiles as a single
     portable self-contained EXE (with embedded HTML + default INI), and runs it.
-    v26 - Fixed cascading workarea shrink on resolution change.
+    v32 - Fixed RDP debounce timer bug & native process name query.
 #>
 
 [CmdletBinding()]
@@ -69,6 +69,7 @@ Dbg-Step "Phase 3: Emit source files"
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace NetMark
 {
@@ -175,6 +176,57 @@ namespace NetMark
         public const int WM_DPICHANGED      = 0x02E0;
         public const int WM_CLOSE           = 0x0010;
         public const int WM_DISPLAYCHANGE   = 0x007E;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromRect(ref RECT lprc, uint dwFlags);
+
+        public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        // >>> CHANGED: High-speed Native Process Name Query to avoid exceptions and jitter
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
+        public const uint PROCESS_QUERY_INFORMATION = 0x0400;
+        public const uint PROCESS_VM_READ = 0x0010;
+
+        // RDP Server Session Detection APIs and Constants
+        public const int SM_REMOTESESSION = 0x1000;
+
+        [DllImport("user32.dll")]
+        public static extern int GetSystemMetrics(int nIndex);
+
+        public static bool IsRemoteSession() => GetSystemMetrics(SM_REMOTESESSION) != 0;
+
+        public const int WM_WTSSESSION_CHANGE = 0x02B1;
+        public const int NOTIFY_FOR_THIS_SESSION = 0;
+
+        public const int WTS_CONSOLE_CONNECT    = 0x1;
+        public const int WTS_CONSOLE_DISCONNECT = 0x2;
+        public const int WTS_REMOTE_CONNECT     = 0x3;
+        public const int WTS_REMOTE_DISCONNECT  = 0x4;
+        public const int WTS_SESSION_LOGON      = 0x5;
+        public const int WTS_SESSION_LOGOFF     = 0x6;
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        public static extern bool WTSRegisterSessionNotification(IntPtr hWnd, int dwFlags);
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        public static extern bool WTSUnRegisterSessionNotification(IntPtr hWnd);
     }
 }
 '@
@@ -421,7 +473,7 @@ namespace NetMark
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix) -------
+# ---- Shared\BannerWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix + SetVisibilityState) -------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -583,8 +635,6 @@ namespace NetMark
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
-            // >>> CHANGED: Use rcMonitor instead of rcWork. 
-            // Using rcWork causes the AppBar to cascade and subtract its height repeatedly on each resolution change.
             var rc = _currentMonitorInfo.rcMonitor;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
             return new NativeMethods.RECT { Left = rc.Left, Top = rc.Top, Right = rc.Right, Bottom = rc.Top + h };
@@ -641,8 +691,6 @@ namespace NetMark
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
                 
-                // CRITICAL FIX: Force the top banner to span the entire monitor width.
-                // This covers the top-left and top-right corners seamlessly.
                 abd.rc.Left = _currentMonitorInfo.rcMonitor.Left;
                 abd.rc.Right = _currentMonitorInfo.rcMonitor.Right;
 
@@ -650,6 +698,27 @@ namespace NetMark
                 this.Bounds = abd.rc.ToRectangle();
             }
             catch { }
+        }
+
+        public void SetVisibilityState(bool visible)
+        {
+            if (visible)
+            {
+                if (!_registered)
+                {
+                    this.Visible = true;
+                    if (this.IsHandleCreated) RegisterAppBar();
+                }
+                ReassertTopmost();
+            }
+            else
+            {
+                if (_registered)
+                {
+                    UnregisterAppBar();
+                    this.Visible = false;
+                }
+            }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -767,7 +836,7 @@ namespace NetMark
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix) ------
+# ---- Shared\BorderWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix + SetVisibilityState) ------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -919,8 +988,6 @@ namespace NetMark
         private NativeMethods.RECT ComputeAppBarRect()
         {
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
-            // >>> CHANGED: Use rcMonitor instead of rcWork. 
-            // Prevents the AppBar borders from creeping inward on every resolution change.
             var rc = _currentMonitorInfo.rcMonitor;
 
             switch (_edge)
@@ -930,8 +997,6 @@ namespace NetMark
                 case NativeMethods.ABE_RIGHT:
                     return new NativeMethods.RECT { Left = rc.Right - size, Top = rc.Top, Right = rc.Right, Bottom = rc.Bottom };
                 case NativeMethods.ABE_BOTTOM:
-                    // CRITICAL FIX: Extend the bottom border to the absolute monitor bounds 
-                    // to cover the transparent corners left by the left/right borders.
                     return new NativeMethods.RECT { Left = rc.Left, Top = rc.Bottom - size, Right = rc.Right, Bottom = rc.Bottom };
                 default:
                     return new NativeMethods.RECT();
@@ -988,8 +1053,6 @@ namespace NetMark
                 };
                 NativeMethods.SHAppBarMessage(NativeMethods.ABM_QUERYPOS, ref abd);
                 
-                // CRITICAL FIX: ABM_QUERYPOS might shrink the bottom border back to rcWork bounds.
-                // We must force it back to full monitor width to cover the corners.
                 if (_edge == NativeMethods.ABE_BOTTOM)
                 {
                     abd.rc.Left = _currentMonitorInfo.rcMonitor.Left;
@@ -1005,6 +1068,27 @@ namespace NetMark
                 this.Bounds = abd.rc.ToRectangle();
             }
             catch { }
+        }
+
+        public void SetVisibilityState(bool visible)
+        {
+            if (visible)
+            {
+                if (!_registered)
+                {
+                    this.Visible = true;
+                    if (this.IsHandleCreated) RegisterAppBar();
+                }
+                ReassertTopmost();
+            }
+            else
+            {
+                if (_registered)
+                {
+                    UnregisterAppBar();
+                    this.Visible = false;
+                }
+            }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -1124,15 +1208,18 @@ Dbg-File $bannerCsprojPath
 Set-Content -LiteralPath $bannerManifestPath -Value $bannerManifestContent -Encoding UTF8
 Dbg-File $bannerManifestPath
 
-# ---- NetMark\Program.cs  (CHANGED: hook range, Log, RefreshMonitorsAndWindows) ----
+# ---- NetMark\Program.cs  (CHANGED: Fixed debounce logic & native process query) ----
  $bannerProgramPath = Join-Path $bannerDir 'Program.cs'
  $bannerProgramContent = @'
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing; 
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using NetMark;
@@ -1154,6 +1241,13 @@ namespace NetMark
         private static FileSystemWatcher _iniWatcher;
         private static Mutex _mutex;
 
+        // >>> CHANGED: RDP state tracking + Fixed Debounce logic
+        private static bool _isHiddenForRdpServer = false;
+        private static bool _isHiddenForRdpClient = false;
+        private static bool _pendingHideState = false;
+        private static System.Windows.Forms.Timer _rdpHideDebounceTimer;
+        private static MessageWindow _sessionListener;
+
         [System.Diagnostics.Conditional("DEBUG")]
         private static void Log(string msg)
         {
@@ -1163,7 +1257,7 @@ namespace NetMark
         [STAThread]
         private static int Main(string[] args)
         {
-            Log("NetMark starting (v26 - Cascading resolution fix)...");
+            Log("NetMark starting (v32 - Fixed RDP Fullscreen debounce)...");
             
             bool createdNew;
             _mutex = new Mutex(true, "Global\\NetMarkSingleInstance", out createdNew);
@@ -1251,6 +1345,12 @@ namespace NetMark
                 Log("Creating border windows (if enabled)...");
                 ApplyBorderSettings(settings);
 
+                Log("Setting up RDP session listener...");
+                _sessionListener = new MessageWindow();
+                _sessionListener.CreateControl(); 
+                
+                SetRdpServerState(hide: NativeMethods.IsRemoteSession());
+
                 Log("Setting up watchdog, INI watcher, and live env-var refresh...");
                 _iniWatcher = new FileSystemWatcher(AppContext.BaseDirectory, "NetMark.ini");
                 _iniWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size;
@@ -1264,22 +1364,7 @@ namespace NetMark
                     IntPtr.Zero, _winEventProc, 0, 0,
                     NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
 
-                _watchdog = new System.Threading.Timer(_ =>
-                {
-                    try
-                    {
-                        IntPtr top = NativeMethods.GetTopWindow(NativeMethods.GetDesktopWindow());
-                        bool ours = false;
-                        foreach (var w in _windows)       if (w.Handle == top) { ours = true; break; }
-                        if (!ours) foreach (var w in _borderWindows) if (w.Handle == top) { ours = true; break; }
-                        if (!ours)
-                        {
-                            foreach (var w in _windows)       w.ReassertTopmost();
-                            foreach (var w in _borderWindows) w.ReassertTopmost();
-                        }
-                    }
-                    catch { }
-                }, null, 250, 250);
+                _watchdog = new System.Threading.Timer(_ => EvaluateForegroundState(), null, 250, 250);
 
                 _monitorCheckTimer = new System.Threading.Timer(_ =>
                 {
@@ -1354,6 +1439,8 @@ namespace NetMark
                 _windows.Add(w);
             }
             ApplyBorderSettings(settings);
+
+            SetRdpServerState(hide: NativeMethods.IsRemoteSession());
         }
 
         private static void ApplyBorderSettings(BannerSettings settings)
@@ -1471,8 +1558,92 @@ namespace NetMark
 
         private static void OnWinEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            foreach (var w in _windows)       w.ReassertTopmost();
-            foreach (var w in _borderWindows) w.ReassertTopmost();
+            EvaluateForegroundState();
+        }
+
+        private static void EvaluateForegroundState()
+        {
+            if (_windows.Count == 0 || !_windows[0].IsHandleCreated) return;
+
+            _windows[0].BeginInvoke((Action)(() =>
+            {
+                bool isRemoteClient = false;
+                bool isFullScreen = false;
+                IntPtr fg = IntPtr.Zero;
+                try
+                {
+                    fg = NativeMethods.GetForegroundWindow();
+                    if (fg != IntPtr.Zero)
+                    {
+                        string name = GetProcessNameFromHwnd(fg);
+                        isRemoteClient = name == "mstsc" || name == "msrdc" || name == "cdviewer" || name == "wfica32" || name == "vmware-view" || name == "rdpclient";
+                        if (isRemoteClient)
+                        {
+                            isFullScreen = IsWindowFullScreen(fg);
+                        }
+                    }
+                }
+                catch { }
+
+                SetRemoteClientState(isRemoteClient && isFullScreen);
+
+                if (!_isHiddenForRdpClient && !_isHiddenForRdpServer)
+                {
+                    IntPtr top = NativeMethods.GetTopWindow(NativeMethods.GetDesktopWindow());
+                    bool ours = false;
+                    foreach (var w in _windows)       if (w.Handle == top) { ours = true; break; }
+                    if (!ours) foreach (var w in _borderWindows) if (w.Handle == top) { ours = true; break; }
+                    
+                    if (!ours)
+                    {
+                        foreach (var w in _windows)       w.ReassertTopmost();
+                        foreach (var w in _borderWindows) w.ReassertTopmost();
+                    }
+                }
+            }));
+        }
+
+        // >>> CHANGED: High-speed native process name query
+        private static string GetProcessNameFromHwnd(IntPtr hwnd)
+        {
+            uint pid;
+            NativeMethods.GetWindowThreadProcessId(hwnd, out pid);
+            if (pid == 0) return "";
+            
+            IntPtr hProcess = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_VM_READ, false, pid);
+            if (hProcess == IntPtr.Zero) return "";
+            
+            StringBuilder sb = new StringBuilder(260);
+            uint size = 260;
+            bool success = NativeMethods.QueryFullProcessImageName(hProcess, 0, sb, ref size);
+            NativeMethods.CloseHandle(hProcess);
+            
+            if (success)
+            {
+                return System.IO.Path.GetFileNameWithoutExtension(sb.ToString()).ToLowerInvariant();
+            }
+            return "";
+        }
+
+        private static bool IsWindowFullScreen(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+            
+            NativeMethods.RECT wndRect;
+            if (!NativeMethods.GetWindowRect(hwnd, out wndRect)) return false;
+            
+            IntPtr monitor = NativeMethods.MonitorFromRect(ref wndRect, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            if (monitor == IntPtr.Zero) return false;
+
+            NativeMethods.MONITORINFOEX mi = new NativeMethods.MONITORINFOEX();
+            mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
+            if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) return false;
+
+            // Allow a small 5px tolerance for borders/shadows
+            return wndRect.Left <= mi.rcMonitor.Left + 5 &&
+                   wndRect.Top <= mi.rcMonitor.Top + 5 &&
+                   wndRect.Right >= mi.rcMonitor.Right - 5 &&
+                   wndRect.Bottom >= mi.rcMonitor.Bottom - 5;
         }
 
         private static void RefreshEnvVars(string reason)
@@ -1506,6 +1677,108 @@ namespace NetMark
             catch (Exception ex) { Log("OnNetworkAddressChanged failed: " + ex.Message); }
         }
 
+        private sealed class MessageWindow : Form
+        {
+            public MessageWindow()
+            {
+                this.ShowInTaskbar = false;
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.ClientSize = new System.Drawing.Size(0, 0); 
+                this.Opacity = 0;
+            }
+
+            protected override void OnHandleCreated(EventArgs e)
+            {
+                base.OnHandleCreated(e);
+                NativeMethods.WTSRegisterSessionNotification(this.Handle, NativeMethods.NOTIFY_FOR_THIS_SESSION);
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == NativeMethods.WM_WTSSESSION_CHANGE)
+                {
+                    int eventType = m.WParam.ToInt32();
+                    Program.OnSessionChange(eventType);
+                }
+                base.WndProc(ref m);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing && this.IsHandleCreated)
+                {
+                    NativeMethods.WTSUnRegisterSessionNotification(this.Handle);
+                }
+                base.Dispose(disposing);
+            }
+        }
+
+        public static void OnSessionChange(int eventType)
+        {
+            Log($"WTS Session Event: {eventType}");
+            switch (eventType)
+            {
+                case NativeMethods.WTS_REMOTE_CONNECT:
+                    SetRdpServerState(hide: true);
+                    break;
+                case NativeMethods.WTS_CONSOLE_CONNECT:
+                case NativeMethods.WTS_REMOTE_DISCONNECT:
+                    SetRdpServerState(hide: NativeMethods.IsRemoteSession());
+                    break;
+            }
+        }
+
+        // >>> CHANGED: Fixed debounce logic to prevent constant timer restarts
+        private static void SetRemoteClientState(bool hide)
+        {
+            if (_pendingHideState == hide) return; // Only act if state is actually changing
+            _pendingHideState = hide;
+
+            if (hide)
+            {
+                if (_rdpHideDebounceTimer == null)
+                {
+                    _rdpHideDebounceTimer = new System.Windows.Forms.Timer();
+                    _rdpHideDebounceTimer.Interval = 500;
+                    _rdpHideDebounceTimer.Tick += (s, e) => 
+                    {
+                        _rdpHideDebounceTimer.Stop();
+                        _isHiddenForRdpClient = true;
+                        EvaluateVisibilityState();
+                    };
+                }
+                // Start timer only if it's not already running
+                if (!_rdpHideDebounceTimer.Enabled)
+                {
+                    _rdpHideDebounceTimer.Start();
+                }
+            }
+            else
+            {
+                // Show immediately
+                if (_rdpHideDebounceTimer != null) _rdpHideDebounceTimer.Stop();
+                _isHiddenForRdpClient = false;
+                EvaluateVisibilityState();
+            }
+        }
+
+        private static void SetRdpServerState(bool hide)
+        {
+            if (_isHiddenForRdpServer == hide) return;
+            _isHiddenForRdpServer = hide;
+            EvaluateVisibilityState();
+        }
+
+        private static void EvaluateVisibilityState()
+        {
+            bool hide = _isHiddenForRdpServer || _isHiddenForRdpClient;
+            
+            Log(hide ? "Hiding NetMark (RDP session active)" : "Restoring NetMark (Console session active)");
+
+            foreach (var w in _windows) w.SetVisibilityState(!hide);
+            foreach (var w in _borderWindows) w.SetVisibilityState(!hide);
+        }
+
         private static void Cleanup()
         {
             try
@@ -1516,6 +1789,10 @@ namespace NetMark
                 _envVarDebounce?.Dispose();
                 _monitorCheckTimer?.Dispose();
                 _iniWatcher?.Dispose();
+                
+                _rdpHideDebounceTimer?.Dispose();
+                _sessionListener?.Dispose(); 
+
                 foreach (var w in _borderWindows) w.Dispose();
                 _borderWindows.Clear();
                 foreach (var w in _windows) w.Dispose();
@@ -2459,7 +2736,7 @@ Start-Sleep -Seconds 3
  $running = Get-Process -Name "NetMark" -ErrorAction SilentlyContinue
 if (-not $running) {
     Dbg-Warn "NetMark process is not running."
-    Dbg-Warn "Note: v26 uses [Conditional('DEBUG')] logging — C:\NetMark-startup.log"
+    Dbg-Warn "Note: v32 uses [Conditional('DEBUG')] logging — C:\NetMark-startup.log"
     Dbg-Warn "will NOT exist in Release builds. Check the on-screen MessageBox for errors."
     $logFile = "C:\NetMark-startup.log"
     if (Test-Path $logFile) {
@@ -2473,7 +2750,7 @@ if (-not $running) {
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Cyan
-Write-Host " NetMark (v26) is running in background."                             -ForegroundColor White
+Write-Host " NetMark (v32) is running in background."                             -ForegroundColor White
 Write-Host " The HTML Configurator should now be open in your browser."           -ForegroundColor White
 Write-Host ""
 Write-Host " Save the NetMark.ini to this folder:"                               -ForegroundColor White
