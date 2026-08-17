@@ -568,7 +568,7 @@ namespace NetMark
 Set-Content -LiteralPath $settingsPath -Value $settingsContent -Encoding UTF8
 Dbg-File $settingsPath
 
-# ---- Shared\BannerWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix + SetVisibilityState) -------
+# ---- Shared\BannerWindow.cs  (FIXED: ComputeAppBarRect anchored to rcMonitor, not rcWork) -------
  $bannerPath = Join-Path $sharedDir 'BannerWindow.cs'
  $bannerContent = @'
 using System;
@@ -735,12 +735,17 @@ namespace NetMark
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
+            // FIX: anchor to rcMonitor, NOT rcWork. The work area (rcWork) already
+            // excludes space reserved by our own AppBar, so using rcWork.Top creates a
+            // feedback loop: after registration the work area top becomes 24, we then
+            // request Top=24, system moves the bar to y=24, work area top becomes 48,
+            // and so on — the bar drifts downward on every resolution change and ends
+            // up stranded mid-screen when the original resolution is restored.
+            // ABM_QUERYPOS/ABM_SETPOS handle work-area reservation for us; we only
+            // need to request the physical screen edge.
             var rcMon = _currentMonitorInfo.rcMonitor;
-            var rcWork = _currentMonitorInfo.rcWork;
             int h = (_settings != null && _settings.HeightPx > 0) ? _settings.HeightPx : 24;
-            // Use rcWork.Top to ensure placement below any existing top taskbar if AppBar fails.
-            // Use rcMon.Left/Right to span the full width.
-            return new NativeMethods.RECT { Left = rcMon.Left, Top = rcWork.Top, Right = rcMon.Right, Bottom = rcWork.Top + h };
+            return new NativeMethods.RECT { Left = rcMon.Left, Top = rcMon.Top, Right = rcMon.Right, Bottom = rcMon.Top + h };
         }
 
         private Rectangle ComputeVisibleWindowRect()
@@ -942,7 +947,7 @@ namespace NetMark
 Set-Content -LiteralPath $bannerPath -Value $bannerContent -Encoding UTF8
 Dbg-File $bannerPath
 
-# ---- Shared\BorderWindow.cs  (CHANGED: Log + WndProc + rcMonitor fix + SetVisibilityState) ------
+# ---- Shared\BorderWindow.cs  (FIXED: ComputeAppBarRect anchored to rcMonitor, not rcWork) ------
  $borderPath = Join-Path $sharedDir 'BorderWindow.cs'
  $borderContent = @'
 using System;
@@ -1098,21 +1103,26 @@ namespace NetMark
 
         private NativeMethods.RECT ComputeAppBarRect()
         {
+            // FIX: anchor to rcMonitor, NOT rcWork. The work area (rcWork) already
+            // excludes space reserved by our own AppBars (top banner + sibling borders),
+            // so using rcWork.Left/Right/Bottom creates a feedback loop: after the
+            // border is registered the work area shrinks inward, we then re-request
+            // the new (smaller) work area coordinate, the border moves inward, the work
+            // area shrinks again, and so on — borders drift inward on every resolution
+            // change and end up stranded mid-screen when the original resolution is
+            // restored. ABM_QUERYPOS/ABM_SETPOS handle work-area reservation for us;
+            // we only need to request the physical screen edge for our side.
             int size = (_settings != null && _settings.BorderSize > 0) ? _settings.BorderSize : 4;
             var rcMon = _currentMonitorInfo.rcMonitor;
-            var rcWork = _currentMonitorInfo.rcWork;
 
             switch (_edge)
             {
                 case NativeMethods.ABE_LEFT:
-                    // Use rcWork.Left to avoid being placed under a left taskbar.
-                    return new NativeMethods.RECT { Left = rcWork.Left, Top = rcMon.Top, Right = rcWork.Left + size, Bottom = rcMon.Bottom };
+                    return new NativeMethods.RECT { Left = rcMon.Left, Top = rcMon.Top, Right = rcMon.Left + size, Bottom = rcMon.Bottom };
                 case NativeMethods.ABE_RIGHT:
-                    // Use rcWork.Right to avoid being placed under a right taskbar.
-                    return new NativeMethods.RECT { Left = rcWork.Right - size, Top = rcMon.Top, Right = rcWork.Right, Bottom = rcMon.Bottom };
+                    return new NativeMethods.RECT { Left = rcMon.Right - size, Top = rcMon.Top, Right = rcMon.Right, Bottom = rcMon.Bottom };
                 case NativeMethods.ABE_BOTTOM:
-                    // Use rcWork.Bottom to avoid being placed under a bottom taskbar.
-                    return new NativeMethods.RECT { Left = rcMon.Left, Top = rcWork.Bottom - size, Right = rcMon.Right, Bottom = rcWork.Bottom };
+                    return new NativeMethods.RECT { Left = rcMon.Left, Top = rcMon.Bottom - size, Right = rcMon.Right, Bottom = rcMon.Bottom };
                 default:
                     return new NativeMethods.RECT();
             }
