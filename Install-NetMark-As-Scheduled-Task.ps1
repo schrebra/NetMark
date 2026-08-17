@@ -2,17 +2,13 @@
 .SYNOPSIS
     Idempotent installation of NetMark. Extracts publish.zip to C:\Program Files\NetMark 
     and creates/updates a Scheduled Task to auto-start and watchdog it.
+    Runs as the current user so the GUI is visible, fully hidden (no popups).
 #>
 
 [CmdletBinding()]
 param(
-    # Path to the downloaded publish.zip (defaults to the current user's Downloads folder)
     [string]$ZipPath = "$env:USERPROFILE\Downloads\publish.zip",
-    
-    # Installation directory
     [string]$InstallDir = "C:\Program Files\NetMark",
-    
-    # Name of the Scheduled Task
     [string]$TaskName = "NetMarkAutoStart"
 )
 
@@ -34,7 +30,6 @@ Write-Host "==============================================================" -For
 # ---------------------------------------------------------
 Write-Step "Checking Prerequisites..."
 
-# 1. Ensure we are running as Administrator
  $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
     Write-Err "Administrator rights required."
@@ -44,7 +39,6 @@ if (-not $isAdmin) {
 }
 Write-Ok "Administrator privileges verified."
 
-# 2. Check paths
  $exePath = Join-Path $InstallDir "NetMark.exe"
  $zipExists = Test-Path -LiteralPath $ZipPath
  $exeExists = Test-Path -LiteralPath $exePath
@@ -73,7 +67,6 @@ if ($zipExists) {
         Write-Info "Created installation directory."
     }
 
-    # Extract to a temporary directory first so we can handle nested folders
     $tempExtractDir = Join-Path $env:TEMP "NetMark_Extract_$(Get-Random)"
     Write-Info "Extracting archive to temporary location..."
     
@@ -84,7 +77,6 @@ if ($zipExists) {
         throw
     }
 
-    # Check if the zip contained a single root folder (like 'publish' or 'netmark')
     $extractedItems = Get-ChildItem -Path $tempExtractDir
     $sourcePath = $tempExtractDir
     
@@ -106,7 +98,6 @@ if ($zipExists) {
     Write-Ok "Files installed successfully."
 }
 
-# Final validation
 if (-not (Test-Path -LiteralPath $exePath)) {
     Write-Err "NetMark.exe missing at: $exePath"
     Write-Info "Extraction completed, but the executable was not found. Verify the contents of the zip file."
@@ -114,18 +105,46 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 }
 
 # ---------------------------------------------------------
-# Phase 3: Scheduled Task Configuration
+# Phase 3: Create Hidden VBS Launcher
 # ---------------------------------------------------------
-Write-Step "Configuring Scheduled Task Watchdog..."
+Write-Step "Creating hidden launcher (VBS wrapper)..."
 
-# Define the Watchdog Action
- $watchdogScript = "if (-not (Get-Process -Name 'NetMark' -ErrorAction SilentlyContinue)) { Start-Process -FilePath '$exePath' -WorkingDirectory '$InstallDir' }"
+ $vbsPath = Join-Path $InstallDir "NetMark_Watchdog.vbs"
+
+ $psCommand = "if (-not (Get-Process -Name 'NetMark' -ErrorAction SilentlyContinue)) { Start-Process -FilePath '$exePath' -WorkingDirectory '$InstallDir' }"
+ $psCommandEscaped = $psCommand -replace '"', '""'
+
+ $vbsContent = @"
+' NetMark hidden watchdog launcher
+' Runs PowerShell completely invisibly (no console window flash)
+Dim wshShell, psCommand, cmdLine
+Set wshShell = CreateObject("WScript.Shell")
+
+psCommand = "$psCommandEscaped"
+cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -Command " & Chr(34) & psCommand & Chr(34)
+
+' Second argument 0 = hidden window, False = don't wait for completion
+wshShell.Run cmdLine, 0, False
+"@
+
+Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII -Force
+Write-Ok "VBS launcher created at: $vbsPath"
+
+# ---------------------------------------------------------
+# Phase 4: Scheduled Task Configuration
+# ---------------------------------------------------------
+Write-Step "Configuring Scheduled Task Watchdog (fully hidden, current user)..."
+
  $action = New-ScheduledTaskAction `
-    -Execute 'powershell.exe' `
-    -Argument "-NoProfile -WindowStyle Hidden -Command `"$watchdogScript`""
+    -Execute 'wscript.exe' `
+    -Argument "`"$vbsPath`""
 
-# Triggers
- $triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+ $currentUser = "$env:USERDOMAIN\$env:USERNAME"
+
+# Trigger 1: At logon of the current user
+ $triggerLogon = New-ScheduledTaskTrigger -AtLogon -User $currentUser
+
+# Trigger 2: Every 5 minutes
  $triggerRepeat = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes 5) `
     -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -135,10 +154,12 @@ Write-Step "Configuring Scheduled Task Watchdog..."
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 2) `
+    -Hidden
 
+# Run as the current user so the GUI is visible on the desktop
  $principal = New-ScheduledTaskPrincipal `
-    -UserId "$env:USERDOMAIN\$env:USERNAME" `
+    -UserId $currentUser `
     -LogonType Interactive `
     -RunLevel Limited
 
@@ -161,11 +182,12 @@ Register-ScheduledTask -TaskName $TaskName `
     -Force | Out-Null
 
 Write-Ok "Task '$TaskName' registered successfully."
-Write-Info "Trigger 1: At user logon."
+Write-Info "Trigger 1: At logon of $currentUser."
 Write-Info "Trigger 2: Every 5 minutes (auto-restart if closed)."
+Write-Info "Running as: $currentUser (GUI will be visible)"
 
 # ---------------------------------------------------------
-# Phase 4: Launch
+# Phase 5: Launch
 # ---------------------------------------------------------
 Write-Step "Launching NetMark..."
 
@@ -174,7 +196,6 @@ if (-not $running) {
     Start-ScheduledTask -TaskName $TaskName
     Write-Info "Waiting for application to initialize..."
     
-    # Wait up to 10 seconds for the single-file exe to extract and launch
     $loops = 0
     do {
         Start-Sleep -Seconds 2
@@ -202,6 +223,8 @@ if ($running) {
 Write-Host "==============================================================" -ForegroundColor Cyan
 Write-Host " Install Location : $InstallDir"
 Write-Host " Task Name        : $TaskName"
+Write-Host " VBS Launcher     : $vbsPath"
+Write-Host " Run As           : $currentUser"
 Write-Host "==============================================================" -ForegroundColor Cyan
 Write-Host " To uninstall later, run these commands:" -ForegroundColor Gray
 Write-Host "   Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:`$false"
