@@ -51,3 +51,16 @@ To build the executable, you only need:
 The script will automatically clean the directory, emit all the necessary C# source files, the embedded HTML configuration page, and the default INI file. It then invokes the .NET compiler to build a single, portable, self-contained `.exe` file. 
 
 Once compilation is finished, the script will automatically launch your newly built NetMark banner and open the HTML configurator in your default web browser so you can begin customizing it.
+
+### Installation Instructions
+
+1. **Download the Release:** On the right side of the GitHub repository page, click **Releases**. Download the file named `publish.zip` and leave it in your standard `Downloads` folder.
+2. **Copy the Script:** In the repository, open the `Install-NetMark-As-Scheduled-Task.ps1` file and click the **Copy icon** (the double-square button) in the top-right corner of the code block to copy it to your clipboard.
+3. **Open PowerShell as Administrator:** Open the Start menu, search for **Windows PowerShell ISE**, right-click it, and select **Run as Administrator**.
+4. **Run the Installer:** Paste the copied script into the PowerShell ISE window and click the **green Play button** at the top (or press `F5`) to execute it.
+
+**What the script does:**
+* Extracts the contents of `publish.zip` and automatically creates a new installation directory at `C:\Program Files\NetMark\`.
+* Moves all required files (NetMark.exe, Configurator.html, and NetMark.ini) into this new folder.
+* Creates a Windows Scheduled Task that points to `NetMark.exe` and acts as a "watchdog" to ensure the application is always running.
+* Configures the task to trigger automatically at user logon (for both new and existing users) and checks every 5 minutes to restart the app if it has been closed or crashed.
