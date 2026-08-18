@@ -2,7 +2,7 @@
 
 NetMark is a lightweight, standalone desktop classification banner for Windows. It provides a persistent, customizable bar at the top of your screen (and optional borders along the edges) to display security classification levels—such as "UNCLASSIFIED", "CUI", or "SECRET"—or important system information like IP addresses and computer names.
 
-<img src="Screenshots/2026-08-16_152743.png" alt="Screenshot" width="600">
+<img src="Screenshots/2026-08-16_152743.png" alt="Screenshot" width="400">
 
 ## Why It Exists
 
