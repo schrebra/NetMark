@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NetMark | Enterprise Desktop Classification Banner System</title>
-<meta name="description" content="NetMark is a zero-dependency, single-file Windows executable that enforces mandatory desktop classification markings on Windows workstations and servers via native AppBar integration. Deploy via GPO, Intune, or SCCM.">
+<meta name="description" content="NetMark is a zero-dependency, single-file Windows executable that enforces mandatory desktop classification markings via native AppBar integration. Deploy via GPO, Intune, or SCCM.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -66,7 +66,7 @@ body {
   position: fixed; top: 0; left: 0; right: 0; height: var(--banner-height); z-index: 10000;
   display: flex; justify-content: space-between; align-items: center; padding: 0 28px;
   font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 800;
-  background: var(--c-unclass); color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  background: var(--c-unclass); color: #fff;
   transition: background 0.5s ease, color 0.5s ease;
   box-shadow: 0 4px 24px rgba(0,0,0,0.5);
 }
@@ -402,11 +402,11 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div>
       <div class="hero-badge"><span class="pulse"></span> PRODUCTION READY &bull; WINDOWS 10/11 &amp; SERVER 2016&ndash;2025</div>
       <h1>Enforce Mandatory <span class="gradient-text">Desktop Classification</span> <span class="underline-accent">Markings</span></h1>
-      <p class="lead">NetMark is a zero-dependency, single-file Windows executable that injects a persistent classification banner directly into the Windows shell via native AppBar registration. Maximized windows cannot cover it. Users cannot dismiss it. Deploy to 10,000 workstations and servers in minutes.</p>
+      <p class="lead">NetMark is a zero-dependency, single-file Windows executable that injects a persistent classification banner directly into the Windows shell via native AppBar registration. Maximized windows cannot cover it. Users cannot dismiss it. Deploy to 10,000 endpoints in minutes.</p>
 
       <div class="platform-pills">
-        <span class="platform-pill"><span class="dot"></span> Windows 10 Workstations</span>
-        <span class="platform-pill"><span class="dot"></span> Windows 11 Workstations</span>
+        <span class="platform-pill"><span class="dot"></span> Windows 10</span>
+        <span class="platform-pill"><span class="dot"></span> Windows 11</span>
         <span class="platform-pill"><span class="dot"></span> Windows Server 2016</span>
         <span class="platform-pill"><span class="dot"></span> Windows Server 2019</span>
         <span class="platform-pill"><span class="dot"></span> Windows Server 2022</span>
@@ -492,7 +492,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">Interactive Matrix</span>
       <h2 class="sec-title">28+ USA Classification Presets</h2>
-      <p class="sec-desc">Click any preset below to instantly retheme the live global banner pinned to the top of this page. This is a 1:1 simulation of the AppBar hook&mdash;the same thing happens on your workstations and servers when the INI file is modified.</p>
+      <p class="sec-desc">Click any preset below to instantly retheme the live global banner pinned to the top of this page. This is a 1:1 simulation of the AppBar hook&mdash;the same thing happens on your endpoints when the INI file is modified.</p>
     </div>
 
     <div class="preset-grid">
@@ -602,50 +602,50 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">System Architecture</span>
       <h2 class="sec-title">Engineered for the Enterprise</h2>
-      <p class="sec-desc">NetMark operates at the Windows shell level. It does not draw a floating window on top of the desktop&mdash;it registers as a native Application Desktop Toolbar, instructing the OS to reserve physical screen real estate that maximized windows mathematically cannot overlap. Works identically on Windows workstations and Windows Server with or without GUI/Desktop Experience.</p>
+      <p class="sec-desc">NetMark operates at the Windows shell level. It does not draw a floating window on top of the desktop&mdash;it registers as a native Application Desktop Toolbar, instructing the OS to reserve physical screen real estate that maximized windows mathematically cannot overlap.</p>
     </div>
 
     <div class="feature-grid">
       <div class="feature-box reveal">
         <div class="feature-icon cyan">&#x1F5A5;</div>
         <h3>Native AppBar Registration</h3>
-        <p>Uses the <code class="inline-code">SHAppBarMessage</code> Win32 API to register as a system-level Application Desktop Toolbar. The OS reserves screen space at the top of every monitor. Maximized windows are clamped below the banner automatically on both workstation and server sessions.</p>
+        <p>Uses the <code class="inline-code">SHAppBarMessage</code> Win32 API to register as a system-level Application Desktop Toolbar. The OS reserves screen space at the top of every monitor. Maximized windows are clamped below the banner automatically.</p>
         <span class="tag">SHAppBarMessage</span>
       </div>
       <div class="feature-box reveal">
         <div class="feature-icon blue">&#x1F5A5;</div>
         <h3>Multi-Monitor PerMonitorV2 DPI</h3>
-        <p>Detects all connected monitors and places a banner on each one. Full PerMonitorV2 DPI awareness means correct rendering on mixed-DPI setups&mdash;a 1080p and a 4K monitor side by side, each with natively scaled banners. Server RDS session hosts with multi-monitor configs are fully supported.</p>
+        <p>Detects all connected monitors and places a banner on each one. Full PerMonitorV2 DPI awareness means correct rendering on mixed-DPI setups&mdash;a 1080p and a 4K monitor side by side, each with natively scaled banners. Multi-monitor RDS configurations are fully supported.</p>
         <span class="tag">PerMonitorV2</span>
       </div>
       <div class="feature-box reveal">
         <div class="feature-icon green">&#x1F4BE;</div>
         <h3>Zero Runtime Dependency</h3>
-        <p>Compiled as a single-file self-contained executable with the .NET 8 runtime embedded. No installer, no prerequisites, no system changes. Drop the ~70 MB EXE on any Windows 10/11 workstation or Windows Server 2016+ machine and run. No .NET framework installation required on the target.</p>
+        <p>Compiled as a single-file self-contained executable with the .NET 8 runtime embedded. No installer, no prerequisites, no system changes. Drop the ~70 MB EXE on any supported Windows machine and run&mdash;no .NET framework installation required on the target.</p>
         <span class="tag">Self-Contained</span>
       </div>
       <div class="feature-box reveal">
         <div class="feature-icon violet">&#x1F310;</div>
         <h3>RDP Session Awareness</h3>
-        <p>Listens to WTS Session change notifications and foreground window events. Automatically hides the local banner when a full-screen RDP session is active on workstations. On RDS session hosts, detects remote vs. console sessions and shows or hides the banner per-session, preventing layered classification markings from clashing on remote displays.</p>
+        <p>Listens to WTS Session change notifications and foreground window events. Automatically hides the local banner when a full-screen RDP session is active. On RDS session hosts, detects remote vs. console sessions and shows or hides the banner per-session, preventing layered classification markings from clashing.</p>
         <span class="tag">WTS Notification</span>
       </div>
       <div class="feature-box reveal">
         <div class="feature-icon amber">&#x26A1;</div>
         <h3>Real-Time Network Telemetry</h3>
-        <p>Subscribes to <code class="inline-code">NetworkAddressChanged</code> events. The <code class="inline-code">%IP_ADDRESS%</code> variable refreshes within 2 seconds of any adapter change&mdash;no polling, no CPU waste. Critical for servers with multiple NICs, VLAN-tagged interfaces, or failover cluster networks.</p>
+        <p>Subscribes to <code class="inline-code">NetworkAddressChanged</code> events. The <code class="inline-code">%IP_ADDRESS%</code> variable refreshes within 2 seconds of any adapter change&mdash;no polling, no CPU waste. Critical for hosts with multiple NICs, VLAN-tagged interfaces, or failover cluster networks.</p>
         <span class="tag">NetworkAddressChanged</span>
       </div>
       <div class="feature-box reveal">
         <div class="feature-icon red">&#x1F6E1;</div>
         <h3>Click-Through &amp; Non-Interfering</h3>
-        <p>The <code class="inline-code">WS_EX_TRANSPARENT</code> window style ensures all mouse and hit-test events pass through to windows beneath. The banner never steals focus, intercepts clicks, or interferes with application interaction. Critical for server admin consoles and RDP management windows.</p>
+        <p>The <code class="inline-code">WS_EX_TRANSPARENT</code> window style ensures all mouse and hit-test events pass through to windows beneath. The banner never steals focus, intercepts clicks, or interferes with application interaction&mdash;critical for admin consoles and RDP management windows.</p>
         <span class="tag">HTTRANSPARENT</span>
       </div>
       <div class="feature-box reveal">
         <div class="feature-icon cyan">&#x1F501;</div>
         <h3>Hot-Reload Configuration</h3>
-        <p>A <code class="inline-code">FileSystemWatcher</code> monitors the INI file. Save a new configuration and every running banner picks up the change instantly&mdash;no process restart, no user logoff, no GPO refresh cycle required. Push a new INI to 500 servers and every banner updates within milliseconds.</p>
+        <p>A <code class="inline-code">FileSystemWatcher</code> monitors the INI file. Save a new configuration and every running banner picks up the change instantly&mdash;no process restart, no user logoff, no GPO refresh cycle required. Push a new INI to 500 hosts and every banner updates within milliseconds.</p>
         <span class="tag">FileSystemWatcher</span>
       </div>
       <div class="feature-box reveal">
@@ -657,7 +657,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
       <div class="feature-box reveal">
         <div class="feature-icon green">&#x1F512;</div>
         <h3>Single Instance Mutex</h3>
-        <p>A global mutex (<code class="inline-code">Global\NetMarkSingleInstance</code>) prevents duplicate processes. If a second instance is launched, it exits silently. No banner stacking, no resource waste. Works correctly across multiple concurrent RDS sessions on the same server&mdash;each session gets its own banner instance.</p>
+        <p>A global mutex (<code class="inline-code">Global\NetMarkSingleInstance</code>) prevents duplicate processes. If a second instance is launched, it exits silently. No banner stacking, no resource waste. Works correctly across multiple concurrent RDS sessions&mdash;each session gets its own banner instance.</p>
         <span class="tag">Global Mutex</span>
       </div>
     </div>
@@ -670,7 +670,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">Data Flow</span>
       <h2 class="sec-title">How NetMark Works</h2>
-      <p class="sec-desc">From INI configuration to rendered AppBar in milliseconds. Every component is designed for zero-maintenance continuous operation on both Windows workstations and Windows Server.</p>
+      <p class="sec-desc">From INI configuration to rendered AppBar in milliseconds. Every component is designed for zero-maintenance continuous operation.</p>
     </div>
     <div class="flow-diagram reveal">
       <div class="flow-node">
@@ -706,7 +706,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">Competitive Analysis</span>
       <h2 class="sec-title">Why NetMark vs. Alternatives</h2>
-      <p class="sec-desc">Most organizations rely on wallpaper text, Excel macros, or third-party bloatware. None of these approaches integrate with the Windows shell properly&mdash;and none work across both workstations and servers.</p>
+      <p class="sec-desc">Most organizations rely on wallpaper text, Excel macros, or third-party bloatware. None of these approaches integrate with the Windows shell properly.</p>
     </div>
     <div class="compare-wrap reveal">
       <table class="compare-table">
@@ -750,7 +750,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
             <td class="yes">&#10003;</td>
           </tr>
           <tr>
-            <td>RDP session auto-hide (client &amp; server)</td>
+            <td>RDP session auto-hide (client &amp; host)</td>
             <td class="no">&times;</td>
             <td class="no">&times;</td>
             <td class="yes">&#10003;</td>
@@ -824,13 +824,13 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">Deployment</span>
       <h2 class="sec-title">Frictionless Enterprise Rollout</h2>
-      <p class="sec-desc">Control everything from a single human-readable INI file. Perfect for mass deployment via Microsoft Intune, SCCM, or Group Policy to both Windows workstations and Windows Servers. No MSI installer required&mdash;just copy the EXE and INI.</p>
+      <p class="sec-desc">Control everything from a single human-readable INI file. Perfect for mass deployment via Microsoft Intune, SCCM, or Group Policy. No MSI installer required&mdash;just copy the EXE and INI.</p>
     </div>
 
     <div class="feature-grid" style="align-items: start;">
       <div class="reveal">
         <h3 style="font-size:22px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:10px;"><span style="font-size:26px;">&#x1F4E6;</span> Automated Provisioning</h3>
-        <p style="color:var(--text-muted); line-height:1.7; margin-bottom:20px; font-size:15px;">Push the binary to your endpoints and establish persistence via registry. The configuration hot-reloads via <code class="inline-code">FileSystemWatcher</code>&mdash;modify the INI file over the network and the banner updates instantly without a process restart. Works identically on workstations and servers.</p>
+        <p style="color:var(--text-muted); line-height:1.7; margin-bottom:20px; font-size:15px;">Push the binary to your endpoints and establish persistence via registry. The configuration hot-reloads via <code class="inline-code">FileSystemWatcher</code>&mdash;modify the INI file over the network and the banner updates instantly without a process restart.</p>
 
         <div class="terminal">
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
@@ -896,27 +896,27 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
       <div class="feature-grid" style="margin-top: 20px;">
         <div class="feature-box" style="padding: 24px;">
           <h3 style="font-size:16px; margin-bottom:8px;">Microsoft Intune</h3>
-          <p style="font-size:13px;">Package as a Win32 app with the EXE and INI. Use <code class="inline-code">NetMark.exe</code> as the install command. Add a registry Run key via PowerShell wrapper for auto-start. Assign to workstation and server device groups.</p>
+          <p style="font-size:13px;">Package as a Win32 app with the EXE and INI. Use <code class="inline-code">NetMark.exe</code> as the install command. Add a registry Run key via PowerShell wrapper for auto-start. Assign to device groups.</p>
         </div>
         <div class="feature-box" style="padding: 24px;">
           <h3 style="font-size:16px; margin-bottom:8px;">SCCM / MECM</h3>
-          <p style="font-size:13px;">Package the EXE + pre-configured INI as an application. Deploy to workstation and server collections. Use a detection rule checking for the running process. Target different INI files to different collections for per-group classification levels.</p>
+          <p style="font-size:13px;">Package the EXE + pre-configured INI as an application. Use a detection rule checking for the running process. Target different INI files to different collections for per-group classification levels.</p>
         </div>
         <div class="feature-box" style="padding: 24px;">
           <h3 style="font-size:16px; margin-bottom:8px;">Group Policy (GPO)</h3>
-          <p style="font-size:13px;">Place the EXE + INI on a network share. Use Group Policy Preferences to copy files locally to workstations and servers. Add a GPO Run key for auto-start. Different OUs can receive different INI files via item-level targeting.</p>
+          <p style="font-size:13px;">Place the EXE + INI on a network share. Use Group Policy Preferences to copy files locally. Add a GPO Run key for auto-start. Different OUs can receive different INI files via item-level targeting.</p>
         </div>
         <div class="feature-box" style="padding: 24px;">
           <h3 style="font-size:16px; margin-bottom:8px;">Scheduled Task (HA)</h3>
-          <p style="font-size:13px;">For high-security environments requiring guaranteed uptime on critical servers and workstations, deploy NetMark via a Scheduled Task with a 1-minute "restart if not running" trigger. If the process is killed, it relaunches within 60 seconds automatically.</p>
+          <p style="font-size:13px;">For high-security environments requiring guaranteed uptime, deploy NetMark via a Scheduled Task with a 1-minute "restart if not running" trigger. If the process is killed, it relaunches within 60 seconds automatically.</p>
         </div>
         <div class="feature-box" style="padding: 24px;">
           <h3 style="font-size:16px; margin-bottom:8px;">RDS Session Hosts</h3>
-          <p style="font-size:13px;">Deploy to RDS session hosts. Each remote session gets its own banner instance via per-session mutex isolation. The console session and each RDP session display their own classification level independently. Perfect for multi-tenant RDS farms.</p>
+          <p style="font-size:13px;">Deploy to RDS session hosts. Each remote session gets its own banner instance via per-session mutex isolation. The console session and each RDP user see their own classification level independently&mdash;perfect for multi-tenant RDS farms.</p>
         </div>
         <div class="feature-box" style="padding: 24px;">
           <h3 style="font-size:16px; margin-bottom:8px;">Server Core &amp; GUI</h3>
-          <p style="font-size:13px;">Works on Server with Desktop Experience, Server Core, and minimally installed servers with the GUI shell. On Server Core, the banner renders in the console session. On full GUI servers, it renders identically to workstation deployments.</p>
+          <p style="font-size:13px;">Works on Server with Desktop Experience, Server Core, and minimally installed servers with the GUI shell. On Server Core, the banner renders in the console session; on full GUI installs, it renders identically to workstation deployments.</p>
         </div>
       </div>
     </div>
@@ -929,7 +929,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">Specifications</span>
       <h2 class="sec-title">Technical Telemetry</h2>
-      <p class="sec-desc">Every architectural decision was made with enterprise reliability as the priority. Here is the full specification sheet for both workstation and server deployments.</p>
+      <p class="sec-desc">Every architectural decision was made with enterprise reliability as the priority. Here is the full specification sheet.</p>
     </div>
 
     <table class="specs-table reveal">
@@ -965,7 +965,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
     <div class="sec-header reveal">
       <span class="sec-label">Knowledge Base</span>
       <h2 class="sec-title">System Administrator FAQ</h2>
-      <p class="sec-desc">Answers to the most common questions from IT teams evaluating NetMark for production deployment on workstations and servers.</p>
+      <p class="sec-desc">Answers to the most common questions from IT teams evaluating NetMark for production deployment.</p>
     </div>
 
     <div class="faq-wrap">
@@ -975,7 +975,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner"><strong>No.</strong> NetMark runs under standard user context (<code>asInvoker</code>). The Windows AppBar registration API permits standard processes to reserve screen space on their own session. No UAC prompt will ever appear. This is critical for environments where end users do not have local admin rights on their workstations, and for RDS session host users on shared servers.</div>
+          <div class="faq-inner"><strong>No.</strong> NetMark runs under standard user context (<code>asInvoker</code>). The Windows AppBar registration API permits standard processes to reserve screen space on their own session. No UAC prompt will ever appear. This is critical for environments where end users do not have local admin rights, and for RDS session host users on shared hosts.</div>
         </div>
       </div>
 
@@ -985,7 +985,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner"><strong>Yes.</strong> NetMark is fully supported on Windows Server 2016, 2019, 2022, and 2025, including RDS (Remote Desktop Services) session hosts. Each RDS session gets its own banner instance via per-session mutex isolation&mdash;the console session and each concurrent RDP user see their own classification level independently. The global mutex prevents duplicate instances within a single session, while allowing correct per-session operation on multi-user servers. Works on Server with Desktop Experience, Server Core, and minimally installed GUI configurations.</div>
+          <div class="faq-inner"><strong>Yes.</strong> NetMark is fully supported on Windows Server 2016, 2019, 2022, and 2025, including RDS (Remote Desktop Services) session hosts. Each RDS session gets its own banner instance via per-session mutex isolation&mdash;the console session and each concurrent RDP user see their own classification level independently. The global mutex prevents duplicate instances within a single session, while allowing correct per-session operation on multi-user hosts. Works on Server with Desktop Experience, Server Core, and minimally installed GUI configurations.</div>
         </div>
       </div>
 
@@ -995,7 +995,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner"><strong>Yes.</strong> Place a pre-configured <code>NetMark.ini</code> in the same folder as the EXE before launch. NetMark detects the existing INI and skips the configurator auto-open. The HTML configurator is still extracted to disk but is not launched. This is the recommended deployment pattern for production environments on both workstations and servers.</div>
+          <div class="faq-inner"><strong>Yes.</strong> Place a pre-configured <code>NetMark.ini</code> in the same folder as the EXE before launch. NetMark detects the existing INI and skips the configurator auto-open. The HTML configurator is still extracted to disk but is not launched. This is the recommended deployment pattern for production environments.</div>
         </div>
       </div>
 
@@ -1005,17 +1005,17 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner">The UI utilizes the <code>WS_EX_TRANSPARENT</code> extended window style and returns <code>HTTRANSPARENT</code> from <code>WM_NCHITTEST</code>. This instructs the OS compositor to pass all mouse and hit-test events directly to the window beneath. The banner will never accidentally steal focus or intercept clicks meant for applications&mdash;critical for server admin consoles, Hyper-V managers, and RDP management windows.</div>
+          <div class="faq-inner">The UI utilizes the <code>WS_EX_TRANSPARENT</code> extended window style and returns <code>HTTRANSPARENT</code> from <code>WM_NCHITTEST</code>. This instructs the OS compositor to pass all mouse and hit-test events directly to the window beneath. The banner will never accidentally steal focus or intercept clicks meant for applications&mdash;critical for admin consoles, Hyper-V managers, and RDP management windows.</div>
         </div>
       </div>
 
       <div class="faq-row reveal">
         <button class="faq-btn" aria-expanded="false" onclick="toggleFaq(this)">
-          How does NetMark handle RDP sessions on workstations vs. servers?
+          How does NetMark handle RDP sessions on the client vs. host side?
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner">NetMark monitors both sides of an RDP session. On <strong>workstations</strong> (the client side running mstsc), it detects full-screen RDP windows and hides the local banner so the remote server's own classification markings are visible without overlap. On <strong>Windows Server</strong> (the RDS session host side), it detects remote vs. console sessions via <code>GetSystemMetrics(SM_REMOTESESSION)</code> and WTS session change notifications, showing the banner per-session so each remote user sees the correct classification level for that server.</div>
+          <div class="faq-inner">NetMark monitors both sides of an RDP session. On the <strong>client side</strong> (running mstsc), it detects full-screen RDP windows and hides the local banner so the remote host's own classification markings are visible without overlap. On the <strong>RDS session host side</strong>, it detects remote vs. console sessions via <code>GetSystemMetrics(SM_REMOTESESSION)</code> and WTS session change notifications, showing the banner per-session so each remote user sees the correct classification level.</div>
         </div>
       </div>
 
@@ -1025,7 +1025,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner">The banner and reserved screen space disappear immediately, returning the desktop to its normal state. The AppBar registration is cleaned up automatically via <code>ABM_REMOVE</code> on process shutdown. For high-security environments requiring guaranteed uptime on critical workstations and servers, deploy NetMark via a Scheduled Task with a 1-minute restart trigger&mdash;if the process is killed, it relaunches within 60 seconds automatically.</div>
+          <div class="faq-inner">The banner and reserved screen space disappear immediately, returning the desktop to its normal state. The AppBar registration is cleaned up automatically via <code>ABM_REMOVE</code> on process shutdown. For high-security environments requiring guaranteed uptime, deploy NetMark via a Scheduled Task with a 1-minute restart trigger&mdash;if the process is killed, it relaunches within 60 seconds automatically.</div>
         </div>
       </div>
 
@@ -1035,7 +1035,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner"><strong>Yes.</strong> Since each machine has its own <code>NetMark.ini</code>, you can deploy different INI files to different machine groups. For example, deploy a SECRET INI to SCIF workstations and servers, an UNCLASSIFIED INI to general office workstations, and a CUI INI to healthcare application servers. Use SCCM collections, Intune groups, or GPO item-level targeting to control which INI file reaches which endpoint.</div>
+          <div class="faq-inner"><strong>Yes.</strong> Since each machine has its own <code>NetMark.ini</code>, you can deploy different INI files to different machine groups. For example, deploy a SECRET INI to SCIF hosts, an UNCLASSIFIED INI to general office desktops, and a CUI INI to healthcare application servers. Use SCCM collections, Intune groups, or GPO item-level targeting to control which INI file reaches which endpoint.</div>
         </div>
       </div>
 
@@ -1045,7 +1045,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner">Yes. NetMark uses <strong>PerMonitorV2 DPI awareness</strong>, which means each monitor renders at its native DPI scale. The banner height, font size, and border thickness are all rendered correctly on both 100% and 200% (4K) monitors simultaneously. No blurry text, no mismatched banner heights. Works on workstation multi-monitor setups and RDS session hosts with multi-monitor remote desktop configurations.</div>
+          <div class="faq-inner">Yes. NetMark uses <strong>PerMonitorV2 DPI awareness</strong>, which means each monitor renders at its native DPI scale. The banner height, font size, and border thickness are all rendered correctly on both 100% and 200% (4K) monitors simultaneously. No blurry text, no mismatched banner heights. Works on multi-monitor desktop setups and RDS session hosts with multi-monitor remote desktop configurations.</div>
         </div>
       </div>
 
@@ -1067,8 +1067,8 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
   <div class="cta-glow"></div>
   <div class="cta-inner reveal">
     <span class="sec-label">Ready to Deploy</span>
-    <h2>Secure Your Workstations and Servers Today</h2>
-    <p>NetMark is a single file, zero dependencies, and production-ready for both Windows workstations and Windows Server. Copy it to a machine, save your config, and every endpoint&mdash;from office desktops to RDS session hosts&mdash;is compliant in under five minutes.</p>
+    <h2>Secure Your Endpoints Today</h2>
+    <p>NetMark is a single file, zero dependencies, and production-ready. Copy it to a machine, save your config, and every endpoint&mdash;from office desktops to RDS session hosts&mdash;is compliant in under five minutes.</p>
     <div class="btn-group" style="justify-content: center;">
       <a href="#deploy" class="btn-main">View Deployment Guide</a>
       <a href="#levels" class="btn-secondary">Test Live Presets</a>
