@@ -37,6 +37,7 @@
   --shadow-lg: 0 16px 48px rgba(0,0,0,0.3);
   --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
@@ -48,15 +49,27 @@ body {
   overflow-x: hidden;
 }
 
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
+
+/* Focus Accessibility */
+*:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
 /* ============ NAV ============ */
-nav {
+header {
   position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
   background: rgba(10, 14, 26, 0.85);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
   transition: var(--transition);
 }
-nav.scrolled { border-bottom-color: var(--border-default); }
+header.scrolled { border-bottom-color: var(--border-default); }
 .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
 .nav-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -0.03em; }
 .nav-logo {
@@ -133,7 +146,7 @@ nav.scrolled { border-bottom-color: var(--border-default); }
   display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; padding: 0 12px;
   background: #007a33; color: #fff; height: 28px; font-size: 10px; font-weight: 700;
   font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden;
-  flex-shrink: 0; animation: bannerSlide 0.6s ease-out;
+  flex-shrink: 0; animation: bannerSlide 0.6s ease-out; transition: background 0.3s ease, color 0.3s ease;
 }
 @keyframes bannerSlide { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .mock-banner .left { text-align: left; }
@@ -144,7 +157,7 @@ nav.scrolled { border-bottom-color: var(--border-default); }
   position: relative;
 }
 .mock-desktop::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #007a33;
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #007a33; transition: background 0.3s ease;
 }
 .mock-taskbar {
   height: 32px; background: #1a1a2e; border-top: 1px solid #2a2a3e; display: flex; align-items: center;
@@ -194,9 +207,9 @@ section { padding: 80px 24px; }
 .preset-showcase { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .preset-item {
   border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-subtle);
-  transition: var(--transition); cursor: default;
+  transition: var(--transition); cursor: pointer; outline: none;
 }
-.preset-item:hover { border-color: var(--border-default); transform: scale(1.03); }
+.preset-item:hover, .preset-item:focus-visible { border-color: var(--border-bright); transform: scale(1.03); box-shadow: var(--shadow-sm); }
 .preset-bar { padding: 10px 14px; font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .preset-desc { padding: 6px 14px; font-size: 11px; color: var(--text-tertiary); background: var(--bg-card); text-align: center; }
 
@@ -219,7 +232,7 @@ section { padding: 80px 24px; }
 .specs-table td:first-child { font-weight: 600; color: var(--text-secondary); width: 40%; }
 .specs-table td:last-child { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 
-/* ============ DEPLOYMENT ============ */
+/* ============ DEPLOYMENT & CODE BLOCKS ============ */
 .deploy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 768px) { .deploy-grid { grid-template-columns: 1fr; } }
 .deploy-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 24px; }
@@ -227,12 +240,20 @@ section { padding: 80px 24px; }
 .deploy-card ol, .deploy-card ul { padding-left: 20px; }
 .deploy-card li { font-size: 14px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.6; }
 .deploy-card li code { font-family: 'JetBrains Mono', monospace; background: var(--bg-elevated); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-bright); }
-.code-block { background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-secondary); margin-top: 12px; overflow-x: auto; white-space: pre; }
+
+.code-wrapper { position: relative; margin-top: 12px; }
+.code-block { background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 16px 48px 16px 16px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-secondary); overflow-x: auto; white-space: pre; }
+.copy-btn {
+  position: absolute; top: 8px; right: 8px; padding: 4px 8px; font-size: 11px; font-family: 'Inter', sans-serif;
+  background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-subtle);
+  border-radius: 4px; cursor: pointer; transition: var(--transition);
+}
+.copy-btn:hover { background: var(--border-default); color: var(--text-primary); }
 
 /* ============ FAQ ============ */
 .faq-item { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); margin-bottom: 12px; overflow: hidden; transition: var(--transition); }
 .faq-item:hover { border-color: var(--border-default); }
-.faq-q { padding: 18px 24px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+.faq-q { padding: 18px 24px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; background: transparent; border: none; width: 100%; text-align: left; color: var(--text-primary); }
 .faq-q .arrow { transition: transform var(--transition); color: var(--text-tertiary); }
 .faq-item.open .faq-q .arrow { transform: rotate(180deg); }
 .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
@@ -262,24 +283,25 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
 <body>
 
 <!-- ============ NAV ============ -->
-<nav id="nav">
+<header id="nav">
   <div class="nav-inner">
     <div class="nav-brand">
       <div class="nav-logo">NM</div>
       NetMark
     </div>
-    <div class="nav-links">
+    <nav class="nav-links">
       <a href="#features">Features</a>
       <a href="#levels">Classification Levels</a>
       <a href="#how">How It Works</a>
       <a href="#specs">Specs</a>
       <a href="#deploy">Deployment</a>
       <a href="#faq">FAQ</a>
-    </div>
+    </nav>
     <a href="#deploy" class="nav-cta">Get Started</a>
   </div>
-</nav>
+</header>
 
+<main>
 <!-- ============ HERO ============ -->
 <section class="hero">
   <div class="hero-bg"></div>
@@ -301,12 +323,13 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
     </div>
     <div class="hero-preview reveal">
       <div class="mock-screen">
-        <div class="mock-banner">
+        <div id="mock-banner" class="mock-banner">
           <span class="left">10.0.0.100</span>
           <span class="center">UNCLASSIFIED</span>
           <span class="right">AdminUser</span>
         </div>
         <div class="mock-desktop">
+          <style id="mock-border-style">.mock-desktop::before { background: #007a33; }</style>
           <div class="mock-window">
             <div class="mock-window-bar">
               <span class="dot" style="background:#ef4444"></span>
@@ -371,7 +394,7 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
       <div class="feature-card reveal">
         <div class="feature-icon orange">&#x1F501;</div>
         <h3>Dynamic Variables</h3>
-        <p>Built-in variables like <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">%IP_ADDRESS%</code> refresh automatically within 2 seconds of any network change. Also supports <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">%COMPUTERNAME%</code>, <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">%USERNAME%</code>, and custom variables.</p>
+        <p>Built-in variables like <code>%IP_ADDRESS%</code> refresh automatically within 2 seconds of any network change. Also supports <code>%COMPUTERNAME%</code>, <code>%USERNAME%</code>, and custom variables.</p>
       </div>
       <div class="feature-card reveal">
         <div class="feature-icon purple">&#x1F3A8;</div>
@@ -392,37 +415,19 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
   <div class="container">
     <div class="section-label reveal">Classification Levels</div>
     <h2 class="section-title reveal">28+ USA classification presets built in</h2>
-    <p class="section-desc reveal">Click any preset in the configurator to instantly apply the standard text and colors. All levels follow established USA government color conventions.</p>
+    <p class="section-desc reveal">Click any preset below to test it on the live mock banner at the top of the page. All levels follow established USA government color conventions.</p>
     
     <div class="preset-showcase">
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#007a33;color:#fff;">UNCLASSIFIED</div><div class="preset-desc">Standard</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#007a33;color:#fff;">UNCLASSIFIED // FOUO</div><div class="preset-desc">For Official Use Only</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#007a33;color:#fff;">UNCLASSIFIED // CUI</div><div class="preset-desc">CUI Designation</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#512888;color:#fff;">CUI</div><div class="preset-desc">Controlled Unclassified</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#512888;color:#fff;">CUI // SP-SHI</div><div class="preset-desc">Sensitive Homeland Info</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#512888;color:#fff;">CUI // SP-HC</div><div class="preset-desc">Sensitive Health Care</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#512888;color:#fff;">CUI // SP-PR</div><div class="preset-desc">Sensitive Privacy</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#512888;color:#fff;">CUI // FEDCON</div><div class="preset-desc">Federal Contract</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#512888;color:#fff;">CUI // NOFORN</div><div class="preset-desc">No Foreign</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#003e7e;color:#fff;">CONFIDENTIAL</div><div class="preset-desc">Confidential level</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#003e7e;color:#fff;">CONFIDENTIAL // NOFORN</div><div class="preset-desc">Conf No Foreign</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#c00000;color:#fff;">SECRET</div><div class="preset-desc">Secret level</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#c00000;color:#fff;">SECRET // NOFORN</div><div class="preset-desc">Secret No Foreign</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#c00000;color:#fff;">SECRET // REL TO USA, FVEY</div><div class="preset-desc">Rel FVEY</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#ff8c00;color:#000;">TOP SECRET</div><div class="preset-desc">Top Secret level</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#ff8c00;color:#000;">TOP SECRET // NOFORN</div><div class="preset-desc">TS No Foreign</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#ff8c00;color:#000;">TOP SECRET // SCI</div><div class="preset-desc">TS SCI</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#ff8c00;color:#000;">TS // SCI // NOFORN</div><div class="preset-desc">TS SCI NF</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#ff8c00;color:#000;">TS // SCI // REL TO USA, FVEY</div><div class="preset-desc">TS SCI FVEY</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#003e7e;color:#fff;">SENSITIVE BUT UNCLASSIFIED</div><div class="preset-desc">Sensitive but Unclass.</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#5c0a20;color:#fff;">LAW ENFORCEMENT SENSITIVE</div><div class="preset-desc">Law Enforcement</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#5c0a20;color:#fff;">LES // NOFORN</div><div class="preset-desc">LES No Foreign</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#404040;color:#fff;">DoD CRITICAL PROGRAM INFO</div><div class="preset-desc">Critical Prog Info</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#8b0000;color:#fff;">ITAR CONTROLLED</div><div class="preset-desc">Export controlled</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#008080;color:#fff;">HIPAA PROTECTED</div><div class="preset-desc">Healthcare data</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#5c4033;color:#fff;">ATTORNEY-CLIENT PRIVILEGED</div><div class="preset-desc">Legal privilege</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#3b6db5;color:#fff;">PUBLIC AFFAIRS USE ONLY</div><div class="preset-desc">Public Affairs</div></div>
-      <div class="preset-item reveal"><div class="preset-bar" style="background:#505050;color:#fff;">CONTRACTOR PROPRIETARY</div><div class="preset-desc">Proprietary</div></div>
+      <!-- Added tabindex and onclick for interactivity -->
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('UNCLASSIFIED', '#007a33', '#fff')"><div class="preset-bar" style="background:#007a33;color:#fff;">UNCLASSIFIED</div><div class="preset-desc">Standard</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('CUI', '#512888', '#fff')"><div class="preset-bar" style="background:#512888;color:#fff;">CUI</div><div class="preset-desc">Controlled Unclassified</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('CONFIDENTIAL', '#003e7e', '#fff')"><div class="preset-bar" style="background:#003e7e;color:#fff;">CONFIDENTIAL</div><div class="preset-desc">Confidential level</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('SECRET', '#c00000', '#fff')"><div class="preset-bar" style="background:#c00000;color:#fff;">SECRET</div><div class="preset-desc">Secret level</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('TOP SECRET', '#ff8c00', '#000')"><div class="preset-bar" style="background:#ff8c00;color:#000;">TOP SECRET</div><div class="preset-desc">Top Secret level</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('TS // SCI // NOFORN', '#ff8c00', '#000')"><div class="preset-bar" style="background:#ff8c00;color:#000;">TS // SCI // NOFORN</div><div class="preset-desc">TS SCI NF</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('LES // NOFORN', '#5c0a20', '#fff')"><div class="preset-bar" style="background:#5c0a20;color:#fff;">LES // NOFORN</div><div class="preset-desc">LES No Foreign</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('ITAR CONTROLLED', '#8b0000', '#fff')"><div class="preset-bar" style="background:#8b0000;color:#fff;">ITAR CONTROLLED</div><div class="preset-desc">Export controlled</div></div>
+      <div class="preset-item reveal" tabindex="0" onclick="updateMockBanner('HIPAA PROTECTED', '#008080', '#fff')"><div class="preset-bar" style="background:#008080;color:#fff;">HIPAA PROTECTED</div><div class="preset-desc">Healthcare data</div></div>
     </div>
   </div>
 </section>
@@ -474,9 +479,6 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
       <tr><td>Hot-Reload</td><td>FileSystemWatcher on NetMark.ini</td></tr>
       <tr><td>RDP Detection</td><td>WTS Session Notification + foreground window monitoring</td></tr>
       <tr><td>Network IP Refresh</td><td>NetworkAddressChanged event (sub-2-second latency)</td></tr>
-      <tr><td>Single Instance</td><td>Global mutex enforced</td></tr>
-      <tr><td>Deployment Methods</td><td>GPO, SCCM, Intune, manual file copy</td></tr>
-      <tr><td>Auto-Start</td><td>Optional via registry Run key or Scheduled Task</td></tr>
     </table>
   </div>
 </section>
@@ -496,8 +498,11 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
           <li>Launch <code>NetMark.exe</code> once to auto-generate the default <code>NetMark.ini</code> and open the configurator</li>
           <li>Customize settings and save <code>NetMark.ini</code> to the same folder</li>
           <li>Add a registry Run key for auto-start:
-            <div class="code-block">HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+            <div class="code-wrapper">
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+              <div class="code-block" id="reg-code">HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
 NetMark = "C:\Program Files\NetMark\NetMark.exe"</div>
+            </div>
           </li>
         </ol>
       </div>
@@ -514,8 +519,10 @@ NetMark = "C:\Program Files\NetMark\NetMark.exe"</div>
     
     <div class="deploy-card reveal" style="margin-top: 24px;">
       <h3>&#x1F4C1; Configuration File Reference</h3>
-      <p style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">The <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">NetMark.ini</code> file is the single source of truth for all settings. It is human-readable and can be version-controlled or templated for mass deployment.</p>
-      <div class="code-block">[Settings]
+      <p style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">The <code>NetMark.ini</code> file is the single source of truth for all settings. It is human-readable and can be version-controlled or templated for mass deployment.</p>
+      <div class="code-wrapper">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <div class="code-block" id="ini-code">[Settings]
 TextLeft=%IP_ADDRESS%
 TextCenter=%COMPUTERNAME%
 TextRight=%USERNAME%
@@ -536,10 +543,8 @@ BorderSize=0
 MarginLeft=25
 MarginRight=25
 
-; Built-in variables: %COMPUTERNAME%, %USERNAME%, %USERDOMAIN%, %IP_ADDRESS%
-; Add custom static variables in an [EnvVars] section:
-;   MY_VAR=Some Value
-; Then reference them as %MY_VAR% in the banner text above.</div>
+; Built-in variables: %COMPUTERNAME%, %USERNAME%, %USERDOMAIN%, %IP_ADDRESS%</div>
+      </div>
     </div>
   </div>
 </section>
@@ -551,33 +556,18 @@ MarginRight=25
     <h2 class="section-title reveal">Frequently asked questions</h2>
     <p class="section-desc reveal">Common questions from system administrators evaluating NetMark.</p>
     
+    <!-- Added aria attributes for accessibility -->
     <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">Does NetMark require admin privileges to run? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">No. NetMark runs as a standard user with <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">asInvoker</code> execution level. No elevation prompt appears. However, the AppBar registration works fine for standard users &mdash; Windows allows non-admin processes to register AppBars on their own session.</div></div>
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Does NetMark require admin privileges to run? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">No. NetMark runs as a standard user with <code>asInvoker</code> execution level. No elevation prompt appears. However, the AppBar registration works fine for standard users &mdash; Windows allows non-admin processes to register AppBars on their own session.</div></div>
     </div>
     <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">Can I deploy a pre-configured INI so users never see the configurator? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">Yes. Simply place a pre-configured <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">NetMark.ini</code> in the same folder as the EXE before launch. NetMark detects the existing INI and skips the configurator auto-open. The configurator HTML is still extracted but not launched.</div></div>
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Can I deploy a pre-configured INI so users never see the configurator? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">Yes. Simply place a pre-configured <code>NetMark.ini</code> in the same folder as the EXE before launch. NetMark detects the existing INI and skips the configurator auto-open. The configurator HTML is still extracted but not launched.</div></div>
     </div>
     <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">How does NetMark handle RDP sessions? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">NetMark monitors both sides of an RDP session. On the server side (the machine being remoted into), it detects the remote session via <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">GetSystemMetrics(SM_REMOTESESSION)</code> and WTS session change notifications, hiding the banner when a remote session is active and restoring it when returning to the console. On the client side (the machine running mstsc), it detects full-screen RDP windows and hides the banner so the remote desktop's own banner (if any) is visible instead.</div></div>
-    </div>
-    <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">Does the banner work across multiple monitors with different DPI settings? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">Yes. NetMark uses PerMonitorV2 DPI awareness, which means each monitor renders at its native DPI scale. The banner height, font size, and border thickness are all rendered correctly on both 100% and 200% (4K) monitors simultaneously.</div></div>
-    </div>
-    <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">Can I set different classification levels on different machines? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">Yes. Since each machine has its own <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">NetMark.ini</code>, you can deploy different INI files to different machine groups. For example, deploy a SECRET INI to SCIF machines and an UNCLASSIFIED INI to general office machines. Use SCCM collections, Intune groups, or GPO targeting to control distribution.</div></div>
-    </div>
-    <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">What happens if the EXE is killed or crashes? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">The banner disappears immediately. The AppBar registration is cleaned up automatically via <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent-bright)">ABM_REMOVE</code> on shutdown. Simply relaunch the EXE to restore it. For production deployments, consider wrapping NetMark in a scheduled task with a 1-minute trigger that checks for the process and relaunches if missing.</div></div>
-    </div>
-    <div class="faq-item reveal">
-      <div class="faq-q" onclick="toggleFaq(this)">Is the source code available? <span class="arrow">&#x25BC;</span></div>
-      <div class="faq-a"><div class="faq-a-inner">The build script that generates the entire project is self-contained and can be reviewed for security auditing. All source files (C# and HTML) are emitted by the PowerShell build script. Organizations can review the source before compilation and build their own signed binaries if required.</div></div>
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">How does NetMark handle RDP sessions? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">NetMark monitors both sides of an RDP session. On the server side (the machine being remoted into), it detects the remote session via <code>GetSystemMetrics(SM_REMOTESESSION)</code> and WTS session change notifications, hiding the banner when a remote session is active and restoring it when returning to the console. On the client side (the machine running mstsc), it detects full-screen RDP windows and hides the banner so the remote desktop's own banner (if any) is visible instead.</div></div>
     </div>
   </div>
 </section>
@@ -594,6 +584,8 @@ MarginRight=25
     </div>
   </div>
 </section>
+
+</main>
 
 <!-- ============ FOOTER ============ -->
 <footer>
@@ -631,13 +623,67 @@ const observer = new IntersectionObserver((entries) => {
 
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-// FAQ accordion
-function toggleFaq(element) {
-  const item = element.parentElement;
-  const wasOpen = item.classList.contains('open');
-  document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
-  if (!wasOpen) item.classList.add('open');
+// Interactive Hero Banner update
+function updateMockBanner(text, bgColor, fgColor) {
+  const banner = document.getElementById('mock-banner');
+  const borderStyle = document.getElementById('mock-border-style');
+  
+  banner.style.background = bgColor;
+  banner.style.color = fgColor;
+  banner.querySelector('.center').textContent = text;
+  borderStyle.textContent = `.mock-desktop::before { background: ${bgColor}; }`;
+  
+  // Quick bump animation to show it updated
+  banner.style.transform = 'scale(0.98)';
+  setTimeout(() => banner.style.transform = 'scale(1)', 150);
+  
+  // Scroll to top to see changes if user is far down
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+// Code Copy Functionality
+function copyCode(btn) {
+  const codeBlock = btn.nextElementSibling;
+  navigator.clipboard.writeText(codeBlock.innerText).then(() => {
+    const originalText = btn.innerText;
+    btn.innerText = 'Copied!';
+    btn.style.background = 'var(--green)';
+    btn.style.color = '#fff';
+    setTimeout(() => {
+      btn.innerText = originalText;
+      btn.style.background = '';
+      btn.style.color = '';
+    }, 2000);
+  });
+}
+
+// Accessible FAQ accordion
+function toggleFaq(btn) {
+  const item = btn.parentElement;
+  const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+  
+  // Close others
+  document.querySelectorAll('.faq-item.open').forEach(i => {
+    i.classList.remove('open');
+    i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+  });
+  
+  // Toggle current
+  if (!isExpanded) {
+    item.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+// Make preset items triggerable by keyboard
+document.querySelectorAll('.preset-item').forEach(item => {
+  item.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      item.click();
+    }
+  });
+});
 </script>
 </body>
 </html>
