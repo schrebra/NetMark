@@ -89,11 +89,23 @@ header {
 .nav-inner { max-width: 1400px; margin: 0 auto; padding: 0 32px; height: 72px; display: flex; align-items: center; justify-content: space-between; }
 .nav-brand { display: flex; align-items: center; gap: 12px; font-weight: 900; font-size: 20px; letter-spacing: -0.04em; }
 .nav-logo {
-  width: 38px; height: 38px; border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  width: 40px; height: 40px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.14) 0%, rgba(59, 130, 246, 0.06) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.28);
   display: flex; align-items: center; justify-content: center;
-  font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 16px;
-  box-shadow: 0 0 24px var(--glow-cyan), 0 4px 12px rgba(0,0,0,0.3);
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px;
+  letter-spacing: -0.06em;
+  color: #7dd3fc;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.18), inset 0 1px 0 rgba(255,255,255,0.06);
+  position: relative; overflow: hidden;
+}
+.nav-logo::after {
+  content: '';
+  position: absolute;
+  top: -60%; left: -60%;
+  width: 220%; height: 220%;
+  background: linear-gradient(135deg, transparent 42%, rgba(125, 211, 252, 0.08) 50%, transparent 58%);
+  pointer-events: none;
 }
 .nav-links { display: flex; gap: 30px; }
 .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 600; transition: var(--transition); position: relative; }
@@ -633,7 +645,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
       <div class="feature-box reveal">
         <div class="feature-icon blue">&#x1F7E0;</div>
         <h3>Screen Edge Borders</h3>
-        <p>Optional colored borders wrap the left, right, and bottom of every monitor. The bottom border queries the taskbar position via <code class="inline-code">ABM_GETTASKBARPOS</code> and positions itself above the taskbar automatically. On Server Core with no taskbar, it sits flush at the screen edge.</p>
+        <p>Optional colored borders wrap the left, right, and bottom of every monitor. The bottom border queries the taskbar position via <code class="inline-code">ABM_GETTASKBARPOS</code> and positions itself above the taskbar automatically, so the border never overlaps the system tray or pinned apps.</p>
         <span class="tag">ABM_GETTASKBARPOS</span>
       </div>
       <div class="feature-box reveal">
@@ -778,10 +790,6 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <h3 style="font-size:16px; margin-bottom:8px;">RDS Session Hosts</h3>
           <p style="font-size:13px;">Deploy to RDS session hosts. Each remote session gets its own banner instance via per-session mutex isolation. The console session and each RDP user see their own classification level independently&mdash;perfect for multi-tenant RDS farms.</p>
         </div>
-        <div class="feature-box" style="padding: 24px;">
-          <h3 style="font-size:16px; margin-bottom:8px;">Server Core &amp; GUI</h3>
-          <p style="font-size:13px;">Works on Server with Desktop Experience, Server Core, and minimally installed servers with the GUI shell. On Server Core, the banner renders in the console session; on full GUI installs, it renders identically to workstation deployments.</p>
-        </div>
       </div>
     </div>
   </div>
@@ -858,7 +866,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
         <div class="faq-content">
-          <div class="faq-inner"><strong>Yes.</strong> NetMark is fully supported on Windows Server 2016, 2019, 2022, and 2025, including RDS (Remote Desktop Services) session hosts. Each RDS session gets its own banner instance via per-session mutex isolation&mdash;the console session and each concurrent RDP user see their own classification level independently. The global mutex prevents duplicate instances within a single session, while allowing correct per-session operation on multi-user hosts. Works on Server with Desktop Experience, Server Core, and minimally installed GUI configurations.</div>
+          <div class="faq-inner"><strong>Yes.</strong> NetMark is fully supported on Windows Server 2016, 2019, 2022, and 2025, including RDS (Remote Desktop Services) session hosts. Each RDS session gets its own banner instance via per-session mutex isolation&mdash;the console session and each concurrent RDP user see their own classification level independently. The global mutex prevents duplicate instances within a single session, while allowing correct per-session operation on multi-user hosts.</div>
         </div>
       </div>
 
@@ -921,16 +929,6 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
           <div class="faq-inner">Yes. NetMark uses <strong>PerMonitorV2 DPI awareness</strong>, which means each monitor renders at its native DPI scale. The banner height, font size, and border thickness are all rendered correctly on both 100% and 200% (4K) monitors simultaneously. No blurry text, no mismatched banner heights. Works on multi-monitor desktop setups and RDS session hosts with multi-monitor remote desktop configurations.</div>
         </div>
       </div>
-
-      <div class="faq-row reveal">
-        <button class="faq-btn" aria-expanded="false" onclick="toggleFaq(this)">
-          What about Server Core and headless servers?
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
-        <div class="faq-content">
-          <div class="faq-inner">NetMark requires a desktop session to render the AppBar. On <strong>Server Core</strong> installations and headless servers without a GUI shell, the banner renders in the console session when an administrator logs in interactively. On servers with Desktop Experience or minimally installed GUI, the banner renders identically to workstation deployments. For truly headless servers (no interactive logon), NetMark does not display a banner but consumes no resources since there is no desktop session to render on. It will activate automatically the moment an interactive session begins.</div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -955,7 +953,7 @@ footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 48px 32px; backg
 <footer>
   <div class="footer-inner">
     <div class="nav-brand">
-      <div class="nav-logo" style="width:28px; height:28px; font-size:12px;">NM</div>
+      <div class="nav-logo" style="width:30px; height:30px; font-size:11px;">NM</div>
       <span style="font-size: 16px;">NetMark</span>
     </div>
     <div class="footer-links">
