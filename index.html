@@ -47,7 +47,7 @@ body {
   -webkit-font-smoothing: antialiased;
   line-height: 1.6;
   overflow-x: hidden;
-  padding-top: var(--banner-height); /* Reserve space for the live banner */
+  padding-top: var(--banner-height);
 }
 
 /* Custom Scrollbar */
@@ -72,7 +72,7 @@ body {
 
 .global-border {
   position: fixed; z-index: 9999; background: #007a33;
-  transition: background 0.3s ease, opacity 0.3s ease; opacity: 1; pointer-events: none;
+  transition: background 0.3s ease; pointer-events: none;
 }
 #global-border-left { top: var(--banner-height); bottom: 0; left: 0; width: 4px; }
 #global-border-right { top: var(--banner-height); bottom: 0; right: 0; width: 4px; }
@@ -146,14 +146,7 @@ section { padding: 80px 24px; }
 .section-title { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
 .section-desc { font-size: 16px; color: var(--text-secondary); max-width: 640px; margin-bottom: 48px; }
 
-/* ============ CLASSIFICATION PRESETS ============ */
-.preset-showcase { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.preset-item { border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-subtle); transition: var(--transition); cursor: pointer; outline: none; background: var(--bg-card); }
-.preset-item:hover, .preset-item:focus-visible { border-color: var(--border-bright); transform: scale(1.03); box-shadow: var(--shadow-sm); z-index: 2; position: relative; }
-.preset-bar { padding: 10px 14px; font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
-.preset-desc { padding: 8px 14px; font-size: 12px; color: var(--text-secondary); text-align: center; }
-
-/* ... (Remaining standard layout CSS omitted for brevity, but matches previous design) ... */
+/* ============ FEATURES ============ */
 .features-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
 .feature-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 28px; transition: var(--transition); }
 .feature-card:hover { border-color: var(--border-default); transform: translateY(-4px); box-shadow: var(--shadow-md); }
@@ -166,12 +159,21 @@ section { padding: 80px 24px; }
 .feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
 .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
 
+/* ============ CLASSIFICATION PRESETS ============ */
+.preset-showcase { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.preset-item { border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-subtle); transition: var(--transition); cursor: pointer; outline: none; background: var(--bg-card); }
+.preset-item:hover, .preset-item:focus-visible { border-color: var(--border-bright); transform: scale(1.03); box-shadow: var(--shadow-sm); z-index: 2; position: relative; }
+.preset-bar { padding: 10px 14px; font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+.preset-desc { padding: 8px 14px; font-size: 12px; color: var(--text-secondary); text-align: center; }
+
+/* ============ HOW IT WORKS ============ */
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
 .step { text-align: center; position: relative; }
 .step-num { width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 20px; background: var(--bg-card); border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: var(--accent-bright); }
 .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
 .step p { font-size: 14px; color: var(--text-secondary); }
 
+/* ============ SPECS TABLE ============ */
 .specs-table { width: 100%; border-collapse: collapse; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
 .specs-table tr { border-bottom: 1px solid var(--border-subtle); }
 .specs-table tr:last-child { border-bottom: none; }
@@ -179,6 +181,7 @@ section { padding: 80px 24px; }
 .specs-table td:first-child { font-weight: 600; color: var(--text-secondary); width: 40%; }
 .specs-table td:last-child { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 
+/* ============ DEPLOYMENT & CODE BLOCKS ============ */
 .deploy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 768px) { .deploy-grid { grid-template-columns: 1fr; } }
 .deploy-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 24px; }
@@ -192,6 +195,23 @@ section { padding: 80px 24px; }
 .copy-btn { position: absolute; top: 8px; right: 8px; padding: 4px 8px; font-size: 11px; font-family: 'Inter', sans-serif; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-subtle); border-radius: 4px; cursor: pointer; transition: var(--transition); }
 .copy-btn:hover { background: var(--border-default); color: var(--text-primary); }
 
+/* ============ FAQ ============ */
+.faq-item { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); margin-bottom: 12px; overflow: hidden; transition: var(--transition); }
+.faq-item:hover { border-color: var(--border-default); }
+.faq-q { padding: 18px 24px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; background: transparent; border: none; width: 100%; text-align: left; color: var(--text-primary); }
+.faq-q .arrow { transition: transform var(--transition); color: var(--text-tertiary); }
+.faq-item.open .faq-q .arrow { transform: rotate(180deg); }
+.faq-a { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.faq-item.open .faq-a { max-height: 500px; }
+.faq-a-inner { padding: 0 24px 18px; font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+/* ============ CTA ============ */
+.cta-band { text-align: center; padding: 80px 24px; }
+.cta-band-inner { max-width: 720px; margin: 0 auto; }
+.cta-band h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 16px; }
+.cta-band p { font-size: 16px; color: var(--text-secondary); margin-bottom: 32px; }
+
+/* ============ FOOTER ============ */
 footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtle); padding: 40px 24px; }
 .footer-inner { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
 .footer-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
@@ -200,6 +220,7 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
 .footer-links a { font-size: 13px; color: var(--text-secondary); text-decoration: none; transition: var(--transition); }
 .footer-links a:hover { color: var(--accent-bright); }
 
+/* ============ ANIMATIONS ============ */
 .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .reveal.visible { opacity: 1; transform: translateY(0); }
 </style>
@@ -208,9 +229,9 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
 
 <!-- ============ LIVE GLOBAL BANNER & BORDERS ============ -->
 <div id="global-banner" class="global-banner">
-  <span class="left">%IP_ADDRESS%</span>
+  <span class="left">10.45.12.189</span>
   <span class="center">UNCLASSIFIED</span>
-  <span class="right">%USERNAME%</span>
+  <span class="right">J.Smith_Admin</span>
 </div>
 <div id="global-border-left" class="global-border"></div>
 <div id="global-border-right" class="global-border"></div>
@@ -225,11 +246,13 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
     </div>
     <nav class="nav-links">
       <a href="#features">Features</a>
-      <a href="#levels">Interactive Levels</a>
-      <a href="#deploy">Deployment</a>
+      <a href="#levels">Classification Levels</a>
+      <a href="#how">How It Works</a>
       <a href="#specs">Specs</a>
+      <a href="#deploy">Deployment</a>
+      <a href="#faq">FAQ</a>
     </nav>
-    <a href="#levels" class="nav-cta">Test Presets</a>
+    <a href="#deploy" class="nav-cta">Get Started</a>
   </div>
 </header>
 
@@ -245,7 +268,12 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
       <p>NetMark displays a persistent classification banner at the top of every monitor and optional colored borders along the edges. Notice the banner pinned to the top of your browser window? That's exactly how it works on the desktop.</p>
       <div class="hero-actions">
         <a href="#levels" class="btn btn-primary">Try Classification Levels &rsaquo;</a>
-        <a href="#deploy" class="btn btn-ghost">View Deployment Guide</a>
+        <a href="#features" class="btn btn-ghost">Explore Features</a>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><div class="num">28+</div><div class="label">Classification Presets</div></div>
+        <div class="hero-stat"><div class="num">0</div><div class="label">Dependencies</div></div>
+        <div class="hero-stat"><div class="num">1</div><div class="label">Single File EXE</div></div>
       </div>
     </div>
     <div class="hero-preview reveal">
@@ -280,6 +308,63 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
           <div class="mock-taskbar-icon"></div>
           <div class="mock-taskbar-icon"></div>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section id="features">
+  <div class="container">
+    <div class="section-label reveal">Features</div>
+    <h2 class="section-title reveal">Everything you need for compliant desktop markings</h2>
+    <p class="section-desc reveal">NetMark is built for environments that require visible classification labels on every workstation. It integrates natively with the Windows shell for reliable, always-on-top banner display.</p>
+    
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <div class="feature-icon blue">&#x1F4BB;</div>
+        <h3>AppBar Integration</h3>
+        <p>Registers as a native Windows AppBar, reserving screen space at the top of every monitor. Maximized windows automatically avoid the banner &mdash; no content is ever hidden behind it.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon green">&#x1F5A5;</div>
+        <h3>Multi-Monitor Support</h3>
+        <p>Automatically detects all connected monitors and places a banner on each one. Handles monitor hot-plug, resolution changes, and DPI scaling across mixed-DPI setups.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon orange">&#x1F7E0;</div>
+        <h3>Screen Edge Borders</h3>
+        <p>Optional colored borders wrap the left, right, and bottom of every monitor. The bottom border positions itself above the taskbar automatically. Same color as the banner.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon purple">&#x1F310;</div>
+        <h3>RDP Session Detection</h3>
+        <p>Automatically hides when a full-screen RDP client is detected on either end of the session. Banners reappear instantly when returning to the local console. No manual toggling required.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon blue">&#x1F4C1;</div>
+        <h3>Single-File Portable EXE</h3>
+        <p>Ships as one self-contained executable with no .NET runtime requirement, no installer, and no dependencies. Drop it on a machine and run. Approximately 70 MB with everything embedded.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon green">&#x1F4CA;</div>
+        <h3>Live Configuration</h3>
+        <p>Edit settings via the built-in HTML configurator and save directly to NetMark.ini. The running banner picks up changes instantly &mdash; no restart needed. Includes 28+ preset classification levels.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon orange">&#x1F501;</div>
+        <h3>Dynamic Variables</h3>
+        <p>Built-in variables like <code>%IP_ADDRESS%</code> refresh automatically within 2 seconds of any network change. Also supports <code>%COMPUTERNAME%</code>, <code>%USERNAME%</code>, and custom variables.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon purple">&#x1F3A8;</div>
+        <h3>Full Customization</h3>
+        <p>Choose from 28+ USA classification presets or configure everything manually: colors, fonts, sizes, margins, drop shadows, text shadows, and border thickness. Per-monitor DPI-aware rendering.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon red">&#x1F6E1;</div>
+        <h3>Click-Through &amp; Non-Interfering</h3>
+        <p>The banner and borders are click-through (HTTRANSPARENT), meaning mouse clicks pass through to whatever is behind them. The banner never steals focus or interferes with application interaction.</p>
       </div>
     </div>
   </div>
@@ -335,61 +420,176 @@ footer { background: var(--bg-surface); border-top: 1px solid var(--border-subtl
   </div>
 </section>
 
-<!-- ============ FEATURES ============ -->
-<section id="features">
+<!-- ============ HOW IT WORKS ============ -->
+<section id="how">
   <div class="container">
-    <div class="section-label reveal">Features</div>
-    <h2 class="section-title reveal">Built for native Windows integration</h2>
+    <div class="section-label reveal">How It Works</div>
+    <h2 class="section-title reveal">Three steps from download to compliant</h2>
+    <p class="section-desc reveal">No installer, no registry entries, no prerequisites. Just download, configure, and run.</p>
     
-    <div class="features-grid">
-      <div class="feature-card reveal">
-        <div class="feature-icon blue">&#x1F4BB;</div>
-        <h3>AppBar Integration</h3>
-        <p>Registers as a native Windows AppBar. Maximized windows automatically avoid the banner &mdash; no content is ever hidden behind it.</p>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-num">1</div>
+        <h3>Place the EXE</h3>
+        <p>Copy NetMark.exe to any folder on the target machine. The first launch auto-extracts the default INI and opens the HTML configurator in your browser.</p>
       </div>
-      <div class="feature-card reveal">
-        <div class="feature-icon green">&#x1F5A5;</div>
-        <h3>Multi-Monitor Support</h3>
-        <p>Automatically detects all connected monitors and handles monitor hot-plug, resolution changes, and mixed-DPI scaling setups.</p>
+      <div class="step reveal">
+        <div class="step-num">2</div>
+        <h3>Configure &amp; Save</h3>
+        <p>Choose a classification level preset or customize colors, fonts, borders, and text. Save the NetMark.ini file to the same folder as the EXE.</p>
       </div>
-      <div class="feature-card reveal">
-        <div class="feature-icon orange">&#x1F7E0;</div>
-        <h3>Screen Edge Borders</h3>
-        <p>Optional colored borders wrap the left, right, and bottom of every monitor (just like the live preview running on this page).</p>
+      <div class="step reveal">
+        <div class="step-num">3</div>
+        <h3>It Just Works</h3>
+        <p>The banner appears instantly on all monitors. Settings hot-reload whenever you save the INI. Deploy via GPO, SCCM, Intune, or a simple file copy.</p>
       </div>
     </div>
   </div>
 </section>
 
+<!-- ============ SPECS ============ -->
+<section id="specs" style="background: var(--bg-surface);">
+  <div class="container">
+    <div class="section-label reveal">Technical Specifications</div>
+    <h2 class="section-title reveal">Built for enterprise deployment</h2>
+    <p class="section-desc reveal">NetMark is engineered for reliability in production environments. Here are the key technical details.</p>
+    
+    <table class="specs-table reveal">
+      <tr><td>Platform</td><td>Windows 10 / 11 (x64)</td></tr>
+      <tr><td>Runtime</td><td>Self-contained .NET 8 (bundled)</td></tr>
+      <tr><td>Package Size</td><td>~70 MB single-file EXE</td></tr>
+      <tr><td>Dependencies</td><td>None &mdash; zero external dependencies</td></tr>
+      <tr><td>DPI Awareness</td><td>PerMonitorV2 (mixed-DPI multi-monitor)</td></tr>
+      <tr><td>Shell Integration</td><td>Native AppBar (SHAppBarMessage API)</td></tr>
+      <tr><td>Window Style</td><td>WS_EX_TOPMOST + WS_EX_LAYERED + WS_EX_TRANSPARENT</td></tr>
+      <tr><td>Config Format</td><td>INI file (human-readable, GPO-friendly)</td></tr>
+      <tr><td>Configurator</td><td>Embedded HTML (opens in default browser)</td></tr>
+      <tr><td>Hot-Reload</td><td>FileSystemWatcher on NetMark.ini</td></tr>
+      <tr><td>RDP Detection</td><td>WTS Session Notification + foreground window monitoring</td></tr>
+      <tr><td>Network IP Refresh</td><td>NetworkAddressChanged event (sub-2-second latency)</td></tr>
+      <tr><td>Single Instance</td><td>Global mutex enforced</td></tr>
+      <tr><td>Deployment Methods</td><td>GPO, SCCM, Intune, manual file copy</td></tr>
+      <tr><td>Auto-Start</td><td>Optional via registry Run key or Scheduled Task</td></tr>
+    </table>
+  </div>
+</section>
+
 <!-- ============ DEPLOYMENT ============ -->
-<section id="deploy" style="background: var(--bg-surface);">
+<section id="deploy">
   <div class="container">
     <div class="section-label reveal">Deployment</div>
-    <h2 class="section-title reveal">Zero dependencies. Instant deploy.</h2>
+    <h2 class="section-title reveal">Deploy in minutes, not hours</h2>
+    <p class="section-desc reveal">NetMark is designed to be deployed by system administrators through any standard software distribution method.</p>
     
     <div class="deploy-grid">
       <div class="deploy-card reveal">
-        <h3>&#x1F4E6; Group Policy / Intune</h3>
-        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;">Push the single 70MB executable and use this registry key for auto-start.</p>
-        <div class="code-wrapper">
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-          <div class="code-block" id="reg-code">HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+        <h3>&#x1F4E6; Manual Deployment</h3>
+        <ol>
+          <li>Copy <code>NetMark.exe</code> to a folder (e.g. <code>C:\Program Files\NetMark\</code>)</li>
+          <li>Launch <code>NetMark.exe</code> once to auto-generate the default <code>NetMark.ini</code> and open the configurator</li>
+          <li>Customize settings and save <code>NetMark.ini</code> to the same folder</li>
+          <li>Add a registry Run key for auto-start:
+            <div class="code-wrapper">
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+              <div class="code-block" id="reg-code">HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
 NetMark = "C:\Program Files\NetMark\NetMark.exe"</div>
-        </div>
+            </div>
+          </li>
+        </ol>
       </div>
       <div class="deploy-card reveal">
-        <h3>&#x1F4C1; Hot-Reloading Configuration</h3>
-        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;">Edit <code>NetMark.ini</code> and the UI updates instantly without restarting the process.</p>
-        <div class="code-wrapper">
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-          <div class="code-block" id="ini-code">[Settings]
-TextCenter=TOP SECRET // SCI
-BgColor=#ff8c00
-FgColor=#000000
-BorderEnabled=True
-BorderSize=4</div>
-        </div>
+        <h3>&#x1F4CB; Enterprise Deployment</h3>
+        <ul>
+          <li><strong>SCCM / MECM:</strong> Package the EXE + pre-configured INI as an application. Deploy to device collections. Use a detection rule checking for the running process.</li>
+          <li><strong>Intune:</strong> Package as a Win32 app with the EXE and INI. Use <code>NetMark.exe</code> as the install command (it self-extracts). Add a registry Run key via PowerShell wrapper for auto-start.</li>
+          <li><strong>GPO:</strong> Place the EXE + INI on a network share. Use Group Policy Preferences to copy files locally. Use a GPO Run key for auto-start.</li>
+          <li><strong>Pre-staged INI:</strong> Ship a pre-configured <code>NetMark.ini</code> alongside the EXE so end users never see the configurator.</li>
+        </ul>
       </div>
+    </div>
+    
+    <div class="deploy-card reveal" style="margin-top: 24px;">
+      <h3>&#x1F4C1; Configuration File Reference</h3>
+      <p style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">The <code>NetMark.ini</code> file is the single source of truth for all settings. It is human-readable and can be version-controlled or templated for mass deployment.</p>
+      <div class="code-wrapper">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <div class="code-block" id="ini-code">[Settings]
+TextLeft=%IP_ADDRESS%
+TextCenter=%COMPUTERNAME%
+TextRight=%USERNAME%
+BgColor=-16745933
+FgColor=-1
+FontName=Segoe UI
+FontSize=10
+FontBold=True
+FontItalic=False
+FontUnderline=False
+Height=24
+TextShadow=False
+TextShadowColor=-12566464
+TextShadowOffset=2
+BannerShadow=False
+BorderEnabled=True
+BorderSize=0
+MarginLeft=25
+MarginRight=25
+
+; Built-in variables: %COMPUTERNAME%, %USERNAME%, %USERDOMAIN%, %IP_ADDRESS%
+; Add custom static variables in an [EnvVars] section:
+;   MY_VAR=Some Value
+; Then reference them as %MY_VAR% in the banner text above.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="faq" style="background: var(--bg-surface);">
+  <div class="container">
+    <div class="section-label reveal">FAQ</div>
+    <h2 class="section-title reveal">Frequently asked questions</h2>
+    <p class="section-desc reveal">Common questions from system administrators evaluating NetMark.</p>
+    
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Does NetMark require admin privileges to run? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">No. NetMark runs as a standard user with <code>asInvoker</code> execution level. No elevation prompt appears. However, the AppBar registration works fine for standard users &mdash; Windows allows non-admin processes to register AppBars on their own session.</div></div>
+    </div>
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Can I deploy a pre-configured INI so users never see the configurator? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">Yes. Simply place a pre-configured <code>NetMark.ini</code> in the same folder as the EXE before launch. NetMark detects the existing INI and skips the configurator auto-open. The configurator HTML is still extracted but not launched.</div></div>
+    </div>
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">How does NetMark handle RDP sessions? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">NetMark monitors both sides of an RDP session. On the server side (the machine being remoted into), it detects the remote session via <code>GetSystemMetrics(SM_REMOTESESSION)</code> and WTS session change notifications, hiding the banner when a remote session is active and restoring it when returning to the console. On the client side (the machine running mstsc), it detects full-screen RDP windows and hides the banner so the remote desktop's own banner (if any) is visible instead.</div></div>
+    </div>
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Does the banner work across multiple monitors with different DPI settings? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">Yes. NetMark uses PerMonitorV2 DPI awareness, which means each monitor renders at its native DPI scale. The banner height, font size, and border thickness are all rendered correctly on both 100% and 200% (4K) monitors simultaneously.</div></div>
+    </div>
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Can I set different classification levels on different machines? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">Yes. Since each machine has its own <code>NetMark.ini</code>, you can deploy different INI files to different machine groups. For example, deploy a SECRET INI to SCIF machines and an UNCLASSIFIED INI to general office machines. Use SCCM collections, Intune groups, or GPO targeting to control distribution.</div></div>
+    </div>
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">What happens if the EXE is killed or crashes? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">The banner disappears immediately. The AppBar registration is cleaned up automatically via <code>ABM_REMOVE</code> on shutdown. Simply relaunch the EXE to restore it. For production deployments, consider wrapping NetMark in a scheduled task with a 1-minute trigger that checks for the process and relaunches if missing.</div></div>
+    </div>
+    <div class="faq-item reveal">
+      <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">Is the source code available? <span class="arrow">&#x25BC;</span></button>
+      <div class="faq-a"><div class="faq-a-inner">The build script that generates the entire project is self-contained and can be reviewed for security auditing. All source files (C# and HTML) are emitted by the PowerShell build script. Organizations can review the source before compilation and build their own signed binaries if required.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA BAND ============ -->
+<section class="cta-band" style="background: var(--bg-surface);">
+  <div class="cta-band-inner">
+    <div class="section-label reveal">Ready to deploy</div>
+    <h2 class="reveal">Secure your workstations today</h2>
+    <p class="reveal">NetMark is a single file, zero dependencies, and production-ready. Copy it to a machine, save your config, and you're compliant in under five minutes.</p>
+    <div class="hero-actions reveal" style="justify-content:center;">
+      <a href="#deploy" class="btn btn-primary">View Deployment Guide &rsaquo;</a>
+      <a href="#features" class="btn btn-ghost">Review Features</a>
     </div>
   </div>
 </section>
@@ -403,11 +603,23 @@ BorderSize=4</div>
       <div class="nav-logo" style="width:28px;height:28px;font-size:14px;">NM</div>
       NetMark
     </div>
+    <div class="footer-links">
+      <a href="#features">Features</a>
+      <a href="#levels">Levels</a>
+      <a href="#deploy">Deployment</a>
+      <a href="#faq">FAQ</a>
+      <a href="#specs">Specs</a>
+    </div>
     <div class="footer-copy">&copy; 2025 NetMark. Built for system administrators.</div>
   </div>
 </footer>
 
 <script>
+// Nav scroll effect
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+});
+
 // Scroll reveal animation
 const observer = new IntersectionObserver((entries) => {
   entries.forEach(entry => {
@@ -419,7 +631,7 @@ const observer = new IntersectionObserver((entries) => {
 }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-// Interactive Global & Mock Banner logic
+// Interactive Global & Mock Banner logic (Jitter removed)
 function applyPreset(text, bgColor, fgColor) {
   // Update Global Browser Banner
   const globalBanner = document.getElementById('global-banner');
@@ -446,10 +658,6 @@ function applyPreset(text, bgColor, fgColor) {
     .mock-desktop::after { background: ${bgColor}; }
     .mock-desktop-right-border { background: ${bgColor}; }
   `;
-  
-  // Animation bump on global banner to indicate change
-  globalBanner.style.transform = 'scale(0.99)';
-  setTimeout(() => globalBanner.style.transform = 'scale(1)', 150);
 }
 
 // Make preset items triggerable by keyboard
@@ -461,6 +669,24 @@ document.querySelectorAll('.preset-item').forEach(item => {
     }
   });
 });
+
+// Accessible FAQ accordion
+function toggleFaq(btn) {
+  const item = btn.parentElement;
+  const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+  
+  // Close others
+  document.querySelectorAll('.faq-item.open').forEach(i => {
+    i.classList.remove('open');
+    i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+  });
+  
+  // Toggle current
+  if (!isExpanded) {
+    item.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+}
 
 // Code Copy Functionality
 function copyCode(btn) {
